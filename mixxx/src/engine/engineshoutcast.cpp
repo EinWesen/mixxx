@@ -617,7 +617,7 @@ void EngineShoutcast::updateMetaData() {
         if (m_custom_metadata && !m_firstCall) {
 
         	// see comment above...
-            if (!m_format_is_mp3 && m_protocol_is_icecast2) {
+            if (!m_format_is_mp3 && m_protocol_is_icecast2)  {
                 shout_metadata_add(m_pShoutMetaData,
                 		           "artist",
                 		           encodeString(m_customArtist).constData());
