@@ -229,6 +229,8 @@ class MixxxApp : public QMainWindow {
     Timer m_runtime_timer;
 
     const CmdlineArgs& m_cmdLineArgs;
+
+    QStringList  zwrVolCtlList;
 };
 
 #endif

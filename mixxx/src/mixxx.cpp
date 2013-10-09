@@ -531,6 +531,30 @@ MixxxApp::MixxxApp(QApplication *pApp, const CmdlineArgs& args)
             m_pConfig->getValueString(ConfigKey("[Playlist]", "Directory")),this);
         qDebug() << "Rescan finished";
     }
+
+
+    // Apply ZWR settiungs
+    qDebug() << "Reading configs added by ZWR...";
+    zwrVolCtlList << "[Master],volume"
+                  << "[Master],headVolume"
+                  << "[Microphone],volume"
+                  << "[Channel1],pregain"
+                  << "[Channel1],volume"
+                  << "[Channel2],pregain"
+                  << "[Channel2],volume";
+
+    ControlObjectThreadMain* volCtl = NULL;
+    foreach (QString ctlString,zwrVolCtlList){
+        ConfigKey ckey = ConfigKey::parseCommaSeparated(ctlString);
+        if (m_pConfig->exists(ckey)) {
+            qDebug() << ctlString << " : " << m_pConfig->getValueString(ckey);
+            volCtl = new ControlObjectThreadMain(ControlObject::getControl(ckey));
+            volCtl->slotSet(m_pConfig->getValueString(ckey).toDouble());
+        }
+        //qDebug() << ctlString << " : " << volCtl->get();
+        delete volCtl;
+    }
+    qDebug() << "Reading configs added by ZWR...done!";
 }
 
 MixxxApp::~MixxxApp()
@@ -542,6 +566,20 @@ MixxxApp::~MixxxApp()
     t.start();
 
     qDebug() << "Destroying MixxxApp";
+
+    // ZWR Bugfix (Save at least volume configs...)
+    qDebug() << "Adding ZWR settings     to config... ";
+    ControlObjectThreadMain* volCtl = NULL;
+    foreach (QString ctlString,zwrVolCtlList){
+        ConfigKey ckey = ConfigKey::parseCommaSeparated(ctlString);
+        volCtl = new ControlObjectThreadMain(ControlObject::getControl(ckey));
+        qDebug() << ctlString << " : " << volCtl->get();
+        m_pConfig->set(ckey, QString::number(volCtl->get()));
+        delete volCtl;
+    }
+    qDebug() << "...done!";
+    // END ZWR Bugfix
+
 
     qDebug() << "save config " << qTime.elapsed();
     m_pConfig->Save();
