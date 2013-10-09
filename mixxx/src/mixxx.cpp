@@ -1392,7 +1392,7 @@ void MixxxApp::slotHelpAbout() {
     QStringList version;
     version.append(VERSION);
     if (!buildBranch.isEmpty() || !buildRevision.isEmpty()) {
-        version.append("( https://github.com/EinWesen/mixxx/tree/1.11-zwr )")
+        version.append("( https://github.com/EinWesen/mixxx/tree/1.11-zwr )");
     }
     about->version_label->setText(version.join(" "));
 
