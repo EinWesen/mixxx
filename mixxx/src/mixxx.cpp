@@ -1392,15 +1392,7 @@ void MixxxApp::slotHelpAbout() {
     QStringList version;
     version.append(VERSION);
     if (!buildBranch.isEmpty() || !buildRevision.isEmpty()) {
-        QStringList buildInfo;
-        buildInfo.append("build");
-        if (!buildBranch.isEmpty()) {
-            buildInfo.append(buildBranch);
-        }
-        if (!buildRevision.isEmpty()) {
-            buildInfo.append(QString("r%1").arg(buildRevision));
-        }
-        version.append(QString("(%1)").arg(buildInfo.join(" ")));
+        version.append("( https://github.com/EinWesen/mixxx/tree/1.11-zwr )")
     }
     about->version_label->setText(version.join(" "));
 
@@ -1490,6 +1482,7 @@ void MixxxApp::slotHelpAbout() {
 "Steven Boswell<br>"
 "Jo&atilde;o Reys Santos<br>"
 "Carl Pillot<br>"
+"Florian Kiekh&auml;fer<br>"
 
 "</p>"
 "<p align=\"center\"><b>%3</b></p>"
