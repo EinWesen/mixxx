@@ -6,37 +6,31 @@
 
 #include <QMap>
 
-#include "Reverb.h"
+#include <Reverb.h>
 
-#include "util.h"
-#include "util/types.h"
-#include "util/defs.h"
 #include "effects/effectprocessor.h"
 #include "engine/effects/engineeffect.h"
 #include "engine/effects/engineeffectparameter.h"
-#include "sampleutil.h"
+#include "util/class.h"
+#include "util/defs.h"
+#include "util/sample.h"
+#include "util/types.h"
 
-struct ReverbGroupState {
-    ReverbGroupState() {
-        // Default damping value.
-        prev_bandwidth = 0.5;
-        prev_damping = 0.5;
-        reverb.init();
-        reverb.activate();
-        crossfade_buffer = SampleUtil::alloc(MAX_BUFFER_LEN);
+class ReverbGroupState : public EffectState {
+  public:
+    ReverbGroupState(const mixxx::EngineParameters& bufferParameters)
+        : EffectState(bufferParameters) {
     }
 
-    ~ReverbGroupState() {
-        SampleUtil::free(crossfade_buffer);
+    void engineParametersChanged(const mixxx::EngineParameters& bufferParameters) {
+        sampleRate = bufferParameters.sampleRate();
     }
 
-    MixxxPlateX2 reverb;
-    CSAMPLE* crossfade_buffer;
-    double prev_bandwidth;
-    double prev_damping;
+    float sampleRate;
+    MixxxPlateX2 reverb{};
 };
 
-class ReverbEffect : public PerChannelEffectProcessor<ReverbGroupState> {
+class ReverbEffect : public EffectProcessorImpl<ReverbGroupState> {
   public:
     ReverbEffect(EngineEffect* pEffect, const EffectManifest& manifest);
     virtual ~ReverbEffect();
@@ -48,9 +42,8 @@ class ReverbEffect : public PerChannelEffectProcessor<ReverbGroupState> {
     void processChannel(const ChannelHandle& handle,
                         ReverbGroupState* pState,
                         const CSAMPLE* pInput, CSAMPLE* pOutput,
-                        const unsigned int numSamples,
-                        const unsigned int sampleRate,
-                        const EffectProcessor::EnableState enableState,
+                        const mixxx::EngineParameters& bufferParameters,
+                        const EffectEnableState enableState,
                         const GroupFeatureState& groupFeatures);
 
   private:
@@ -58,8 +51,10 @@ class ReverbEffect : public PerChannelEffectProcessor<ReverbGroupState> {
         return getId();
     }
 
+    EngineEffectParameter* m_pDecayParameter;
     EngineEffectParameter* m_pBandWidthParameter;
     EngineEffectParameter* m_pDampingParameter;
+    EngineEffectParameter* m_pSendParameter;
 
     DISALLOW_COPY_AND_ASSIGN(ReverbEffect);
 };

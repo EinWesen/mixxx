@@ -8,29 +8,34 @@
 #include <QWidget>
 
 #include "widget/wpushbutton.h"
-#include "skin/skincontext.h"
 #include "effects/effectsmanager.h"
+#include "skin/skincontext.h"
 
 class WEffectPushButton : public WPushButton {
     Q_OBJECT
   public:
     WEffectPushButton(QWidget* pParent, EffectsManager* pEffectsManager);
-    virtual ~WEffectPushButton();
 
-    virtual void setup(QDomNode node, const SkinContext& context);
+    void setup(const QDomNode& node, const SkinContext& context) override;
+    void setupEffectParameterSlot(const ConfigKey& configKey);
 
   public slots:
-    virtual void onConnectedControlChanged(double dParameter, double dValue);
+    void onConnectedControlChanged(double dParameter, double dValue) override;
 
   protected:
-    virtual void mousePressEvent(QMouseEvent* e);
-    virtual void mouseReleaseEvent(QMouseEvent* e);
+    void mousePressEvent(QMouseEvent* e) override;
+    void mouseReleaseEvent(QMouseEvent* e) override;
 
   private slots:
     void parameterUpdated();
     void slotActionChosen(QAction* action);
 
   private:
+    // Set the EffectParameterSlot that should be monitored by this
+    // WEffectKnobComposed.
+    void setEffectParameterSlot(EffectButtonParameterSlotPointer pParameterSlot);
+
+
     EffectsManager* m_pEffectsManager;
     EffectParameterSlotBasePointer m_pEffectParameterSlot;
     QMenu* m_pButtonMenu;

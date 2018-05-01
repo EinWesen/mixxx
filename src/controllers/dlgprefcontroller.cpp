@@ -18,11 +18,12 @@
 #include "controllers/controller.h"
 #include "controllers/controllermanager.h"
 #include "controllers/defs_controllers.h"
-#include "configobject.h"
+#include "preferences/usersettings.h"
+#include "util/version.h"
 
 DlgPrefController::DlgPrefController(QWidget* parent, Controller* controller,
                                      ControllerManager* controllerManager,
-                                     ConfigObject<ConfigValue> *pConfig)
+                                     UserSettingsPointer pConfig)
         : DlgPreferencePage(parent),
           m_pConfig(pConfig),
           m_pControllerManager(controllerManager),
@@ -100,8 +101,6 @@ DlgPrefController::DlgPrefController(QWidget* parent, Controller* controller,
             this, SLOT(removeScript()));
     connect(m_ui.btnOpenScript, SIGNAL(clicked()),
             this, SLOT(openScript()));
-
-    slotUpdate();
 }
 
 DlgPrefController::~DlgPrefController() {
@@ -230,15 +229,6 @@ void DlgPrefController::slotDirty() {
     m_bDirty = true;
 }
 
-QString nameForPreset(const PresetInfo& preset) {
-    QString name = preset.getName();
-    if (name.length() == 0) {
-        QFileInfo file(preset.getPath());
-        name = file.baseName();
-    }
-    return name;
-}
-
 void DlgPrefController::enumeratePresets() {
     m_ui.comboBoxPreset->clear();
 
@@ -249,14 +239,23 @@ void DlgPrefController::enumeratePresets() {
     // user has their controller plugged in)
     m_ui.comboBoxPreset->addItem("...");
 
-    m_ui.comboBoxPreset->setInsertPolicy(QComboBox::InsertAlphabetically);
     // Ask the controller manager for a list of applicable presets
-    PresetInfoEnumerator* pie =  m_pControllerManager->getMainThreadPresetEnumerator();
-    QList<PresetInfo> presets = pie->getPresets(m_pController->presetExtension());
+    QSharedPointer<PresetInfoEnumerator> pie =
+            m_pControllerManager->getMainThreadPresetEnumerator();
+
+    // Not ready yet. Should be rare. We will re-enumerate on the next open of
+    // the preferences.
+    if (pie.isNull()) {
+        return;
+    }
+
+    // Making the list of presets in the alphabetical order
+    QList<PresetInfo> presets = pie->getPresetsByExtension(
+        m_pController->presetExtension());
 
     PresetInfo match;
-    foreach (const PresetInfo& preset, presets) {
-        m_ui.comboBoxPreset->addItem(nameForPreset(preset), preset.getPath());
+    for (const PresetInfo& preset : presets) {
+        m_ui.comboBoxPreset->addItem(preset.getName(), preset.getPath());
         if (m_pController->matchPreset(preset)) {
             match = preset;
         }
@@ -264,7 +263,7 @@ void DlgPrefController::enumeratePresets() {
 
     // Jump to matching device in list if it was found.
     if (match.isValid()) {
-        int index = m_ui.comboBoxPreset->findText(nameForPreset(match));
+        int index = m_ui.comboBoxPreset->findText(match.getName());
         if (index != -1) {
             m_ui.comboBoxPreset->setCurrentIndex(index);
         }
@@ -356,10 +355,21 @@ void DlgPrefController::slotLoadPreset(int chosenIndex) {
         return;
     }
 
-    QString presetPath = m_ui.comboBoxPreset->itemData(chosenIndex).toString();
+    const QString presetPath = m_ui.comboBoxPreset->itemData(chosenIndex).toString();
+    // When loading the preset, we only want to load from the same dir as the
+    // preset itself, otherwise when loading from the system-wide dir we'll
+    // start the search in the user's dir find the existing script,
+    // and do nothing.
+    const QFileInfo presetFileInfo(presetPath);
+    QList<QString> presetDirs;
+    presetDirs.append(presetFileInfo.canonicalPath());
 
     ControllerPresetPointer pPreset = ControllerPresetFileHandler::loadPreset(
-            presetPath, ControllerManager::getPresetPaths(m_pConfig));
+        presetPath, ControllerManager::getPresetPaths(m_pConfig));
+
+    if (!pPreset) {
+        return;
+    }
 
     // Import the preset scripts to the user scripts folder.
     for (QList<ControllerPreset::ScriptFileInfo>::iterator it =
@@ -370,7 +380,7 @@ void DlgPrefController::slotLoadPreset(int chosenIndex) {
         }
 
         QString scriptPath = ControllerManager::getAbsolutePath(
-                it->name, ControllerManager::getPresetPaths(m_pConfig));
+                it->name, presetDirs);
 
 
         QString importedScriptFileName;
@@ -713,7 +723,7 @@ void DlgPrefController::openScript() {
     if (selectedIndices.isEmpty()) {
          QMessageBox::information(
                     this,
-                    tr("Mixxx"),
+                    Version::applicationName(),
                     tr("Please select a script from the list to open."),
                     QMessageBox::Ok, QMessageBox::Ok);
         return;
@@ -734,3 +744,5 @@ void DlgPrefController::openScript() {
         }
     }
 }
+
+

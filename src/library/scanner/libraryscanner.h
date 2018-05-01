@@ -1,37 +1,13 @@
-/***************************************************************************
-                          libraryscanner.h  -  scans library in a thread
-                             -------------------
-    begin                : 11/27/2007
-    copyright            : (C) 2007 Albert Santoni
-    email                : gamegod \a\t users.sf.net
-***************************************************************************/
-
-/***************************************************************************
-*                                                                         *
-*   This program is free software; you can redistribute it and/or modify  *
-*   it under the terms of the GNU General Public License as published by  *
-*   the Free Software Foundation; either version 2 of the License, or     *
-*   (at your option) any later version.                                   *
-*                                                                         *
-***************************************************************************/
-
-#ifndef LIBRARYSCANNER_H
-#define LIBRARYSCANNER_H
+#ifndef MIXXX_LIBRARYSCANNER_H
+#define MIXXX_LIBRARYSCANNER_H
 
 #include <QThread>
 #include <QThreadPool>
-#include <QList>
 #include <QString>
-#include <QList>
-#include <QWidget>
-#include <QSqlDatabase>
 #include <QStringList>
-#include <QRegExp>
-#include <QFileInfo>
-#include <QLinkedList>
 #include <QSemaphore>
+#include <QScopedPointer>
 
-#include "library/dao/cratedao.h"
 #include "library/dao/cuedao.h"
 #include "library/dao/libraryhashdao.h"
 #include "library/dao/directorydao.h"
@@ -39,29 +15,30 @@
 #include "library/dao/trackdao.h"
 #include "library/dao/analysisdao.h"
 #include "library/scanner/scannerglobal.h"
-#include "library/scanner/scannertask.h"
-#include "util/sandbox.h"
-#include "trackinfoobject.h"
+#include "track/track.h"
+#include "util/db/dbconnectionpool.h"
+
 #include <gtest/gtest.h>
 
+class ScannerTask;
+class LibraryScannerDlg;
 class TrackCollection;
 
 class LibraryScanner : public QThread {
     FRIEND_TEST(LibraryScannerTest, ScannerRoundtrip);
     Q_OBJECT
   public:
-    LibraryScanner(QWidget* pParent,
-                   TrackCollection* collection,
-                   ConfigObject<ConfigValue>* pConfig);
-    virtual ~LibraryScanner();
+    LibraryScanner(
+            mixxx::DbConnectionPoolPtr pDbConnectionPool,
+            TrackCollection* pTrackCollection,
+            const UserSettingsPointer& pConfig);
+    ~LibraryScanner() override;
 
+  public slots:
     // Call from any thread to start a scan. Does nothing if a scan is already
     // in progress.
     void scan();
 
-
-
-  public slots:
     // Call from any thread to cancel the scan.
     void slotCancel();
 
@@ -95,7 +72,7 @@ class LibraryScanner : public QThread {
                                    bool newDirectory, int hash);
     void slotDirectoryUnchanged(const QString& directoryPath);
     void slotTrackExists(const QString& trackPath);
-    void slotAddNewTrack(TrackPointer pTrack);
+    void slotAddNewTrack(const QString& trackPath);
 
   private:
     enum ScannerState {
@@ -121,12 +98,11 @@ class LibraryScanner : public QThread {
 
     void cleanUpScan();
 
+    mixxx::DbConnectionPoolPtr m_pDbConnectionPool;
+
     // The library trackcollection. Do not touch this from the library scanner
     // thread.
-    TrackCollection* m_pCollection;
-
-    // The library scanner thread's database connection.
-    QSqlDatabase m_database;
+    TrackCollection* m_pTrackCollection;
 
     // The pool of threads used for worker tasks.
     QThreadPool m_pool;
@@ -135,7 +111,6 @@ class LibraryScanner : public QThread {
     LibraryHashDAO m_libraryHashDao;
     CueDAO m_cueDao;
     PlaylistDAO m_playlistDao;
-    CrateDAO m_crateDao;
     DirectoryDAO m_directoryDao;
     AnalysisDao m_analysisDao;
     TrackDAO m_trackDao;
@@ -151,6 +126,7 @@ class LibraryScanner : public QThread {
     volatile ScannerState m_state;
 
     QStringList m_libraryRootDirs;
+    QScopedPointer<LibraryScannerDlg> m_pProgressDlg;
 };
 
-#endif
+#endif // MIXXX_LIBRARYSCANNER_H

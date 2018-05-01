@@ -5,6 +5,7 @@
 #include <QThread>
 #include <QSemaphore>
 #include <QPair>
+#include <QGLWidget>
 
 #if defined(__APPLE__)
 
@@ -12,28 +13,22 @@
 
 #else
 #if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
+#ifndef QT_OPENGL_ES_2
     #include <qx11info_x11.h>
+    #include <GL/glx.h>
+    //#include "GL/glxext.h"
+    // clean up after Xlib.h, which #defines values that conflict with QT.
+    #undef Bool
+    #undef Unsorted
+    #undef None
+    #undef Status
+#endif // QT_OPENGL_ES_2
 #endif // QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
 #endif
 
 #include "util/performancetimer.h"
 
-
-#if defined(__APPLE__)
-
-#elif defined(__WINDOWS__)
-
-#else
-    #include <GL/glx.h>
-    #include "GL/glxext.h"
-    // clean up after Xlib.h, which #defines values that conflict with QT.
-    #undef Bool
-    #undef Unsorted
-#endif
-
-class QGLWidget;
 class GuiTick;
-class MixxxMainWindow;
 
 class VSyncThread : public QThread {
     Q_OBJECT
@@ -49,7 +44,7 @@ class VSyncThread : public QThread {
 
     static void swapGl(QGLWidget* glw, int index);
 
-    VSyncThread(MixxxMainWindow* mixxMainWindow);
+    VSyncThread(QObject* pParent, GuiTick* pGuiTick);
     ~VSyncThread();
 
     void run();
@@ -57,12 +52,12 @@ class VSyncThread : public QThread {
 
     bool waitForVideoSync(QGLWidget* glw);
     int elapsed();
-    int usToNextSync();
-    void setUsSyncIntervalTime(int usSyncTimer);
+    int toNextSyncMicros();
+    void setSyncIntervalTimeMicros(int usSyncTimer);
     void setVSyncType(int mode);
     int droppedFrames();
     void setSwapWait(int sw);
-    int usFromTimerToNextSync(PerformanceTimer* timer);
+    int fromTimerToNextSyncMicros(const PerformanceTimer& timer);
     void vsyncSlotFinished();
     void getAvailableVSyncTypes(QList<QPair<int, QString > >* list);
     void setupSync(QGLWidget* glw, int index);
@@ -82,7 +77,7 @@ class VSyncThread : public QThread {
 
 #else
     void initGlxext(QGLWidget* glw);
-    bool glXExtensionSupported(Display *dpy, int screen, const char *extension);
+    //bool glXExtensionSupported(Display *dpy, int screen, const char *extension);
 
     /* Currently unused, but probably part of later a hardware sync solution
     PFNGLXGETVIDEOSYNCSGIPROC glXGetVideoSyncSGI;
@@ -108,8 +103,8 @@ class VSyncThread : public QThread {
 #endif
 
     bool m_vSyncTypeChanged;
-    int m_usSyncIntervalTime;
-    int m_usWaitToSwap;
+    int m_syncIntervalTimeMicros;
+    int m_waitToSwapMicros;
     enum VSyncMode m_vSyncMode;
     bool m_syncOk;
     int m_droppedFrames;

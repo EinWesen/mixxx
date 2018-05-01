@@ -3,17 +3,9 @@
                              -------------------
     copyright            : (C) 2007 by Wesley Stessens
                            (C) 1994 by Xiph.org (encoder example)
-                           (C) 1994 Tobias Rafreider (shoutcast and recording fixes)
+                           (C) 1994 Tobias Rafreider (broadcast and recording fixes)
  ***************************************************************************/
 
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
 
 #ifndef ENCODERVORBIS_H
 #define ENCODERVORBIS_H
@@ -23,25 +15,28 @@
 
 #include "util/types.h"
 #include "encoder/encoder.h"
-#include "trackinfoobject.h"
+#include "track/track.h"
 
 class EncoderCallback;
 
 class EncoderVorbis : public Encoder {
   public:
-    EncoderVorbis(EncoderCallback* pCallback=NULL);
+    static const int MONO_BITRATE_TRESHOLD;
+  
+    EncoderVorbis(EncoderCallback* pCallback=nullptr);
     virtual ~EncoderVorbis();
 
-    int initEncoder(int bitrate, int samplerate);
-    void encodeBuffer(const CSAMPLE *samples, const int size);
-    void updateMetaData(char* artist, char* title, char* album);
-    void flush();
+    int initEncoder(int samplerate, QString errorMessage) override;
+    void encodeBuffer(const CSAMPLE *samples, const int size) override;
+    void updateMetaData(const QString& artist, const QString& title, const QString& album) override;
+    void flush() override;
+    void setEncoderSettings(const EncoderSettings& settings) override;
 
   private:
     int getSerial();
     void initStream();
     bool metaDataHasChanged();
-    //Call this method in conjunction with shoutcast streaming
+    //Call this method in conjunction with broadcast streaming
     void writePage();
 
     bool m_bStreamInitialized;
@@ -57,9 +52,11 @@ class EncoderVorbis : public Encoder {
 
     EncoderCallback* m_pCallback;
     TrackPointer m_pMetaData;
-    char* m_metaDataTitle;
-    char* m_metaDataArtist;
-    char* m_metaDataAlbum;
+    QString m_metaDataTitle;
+    QString m_metaDataArtist;
+    QString m_metaDataAlbum;
+    int m_bitrate;
+    int m_channels;
     QFile m_file;
 };
 

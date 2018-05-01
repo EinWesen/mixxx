@@ -5,15 +5,14 @@
 #ifndef ENGINEAUX_H
 #define ENGINEAUX_H
 
-#include "controlobjectslave.h"
-#include "controlpushbutton.h"
-#include "engine/enginechannel.h"
-#include "engine/enginevumeter.h"
-#include "util/circularbuffer.h"
-#include "soundmanagerutil.h"
+#include <QScopedPointer>
 
-class EffectsManager;
-class EngineEffectsManager;
+#include "control/controlproxy.h"
+#include "control/controlpushbutton.h"
+#include "engine/enginechannel.h"
+#include "util/circularbuffer.h"
+#include "soundio/soundmanagerutil.h"
+
 class ControlAudioTaperPot;
 
 // EngineAux is an EngineChannel that implements a mixing source whose
@@ -28,6 +27,7 @@ class EngineAux : public EngineChannel, public AudioDestination {
 
     // Called by EngineMaster whenever is requesting a new buffer of audio.
     virtual void process(CSAMPLE* pOutput, const int iBufferSize);
+    virtual void collectFeatures(GroupFeatureState* pGroupFeatures) const;
     virtual void postProcess(const int iBufferSize) { Q_UNUSED(iBufferSize) }
 
     // This is called by SoundManager whenever there are new samples from the
@@ -47,12 +47,8 @@ class EngineAux : public EngineChannel, public AudioDestination {
     virtual void onInputUnconfigured(AudioInput input);
 
   private:
-    EngineEffectsManager* m_pEngineEffectsManager;
-    EngineVuMeter m_vuMeter;
-    ControlObject* m_pEnabled;
+    QScopedPointer<ControlObject> m_pInputConfigured;
     ControlAudioTaperPot* m_pPregain;
-    ControlObjectSlave* m_pSampleRate;
-    const CSAMPLE* volatile m_sampleBuffer;
     bool m_wasActive;
 };
 

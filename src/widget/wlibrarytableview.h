@@ -8,10 +8,11 @@
 #include <QTableView>
 #include <QFont>
 
-#include "configobject.h"
+#include "preferences/usersettings.h"
 #include "library/libraryview.h"
-#include "trackinfoobject.h"
+#include "track/track.h"
 #include "library/coverartcache.h"
+#include "library/trackmodel.h"
 
 
 class WLibraryTableView : public QTableView, public virtual LibraryView {
@@ -19,10 +20,23 @@ class WLibraryTableView : public QTableView, public virtual LibraryView {
 
   public:
     WLibraryTableView(QWidget* parent,
-                      ConfigObject<ConfigValue>* pConfig,
+                      UserSettingsPointer pConfig,
                       ConfigKey vScrollBarPosKey);
-    virtual ~WLibraryTableView();
-    virtual void moveSelection(int delta);
+    ~WLibraryTableView() override;
+    void moveSelection(int delta) override;
+
+    /**
+     * @brief saveVScrollBarPos function saves current position of scrollbar
+     * using string key - can be any value but should invariant for model
+     * @param key unique for trackmodel
+     */
+    void saveVScrollBarPos(TrackModel* key);
+    /**
+     * @brief restoreVScrollBarPos function finds scrollbar value associated with model
+     * by given key and restores it
+     * @param key unique for trackmodel
+     */
+    void restoreVScrollBarPos(TrackModel* key);
 
   signals:
     void loadTrack(TrackPointer pTrack);
@@ -33,16 +47,19 @@ class WLibraryTableView : public QTableView, public virtual LibraryView {
     void scrollValueChanged(int);
 
   public slots:
-    void saveVScrollBarPos();
+    void saveVScrollBarPos(); // these slosts remain for compatibility
     void restoreVScrollBarPos();
     void setTrackTableFont(const QFont& font);
     void setTrackTableRowHeight(int rowHeight);
+    void setSelectedClick(bool enable);
 
   private:
     void loadVScrollBarPosState();
     void saveVScrollBarPosState();
 
-    ConfigObject<ConfigValue>* m_pConfig;
+    QMap<TrackModel*, int> m_vScrollBarPosValues;
+
+    UserSettingsPointer m_pConfig;
     ConfigKey m_vScrollBarPosKey;
     // The position of the vertical scrollbar slider, eg. before a search is
     // executed

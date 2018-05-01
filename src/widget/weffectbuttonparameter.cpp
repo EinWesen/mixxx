@@ -8,10 +8,8 @@ WEffectButtonParameter::WEffectButtonParameter(QWidget* pParent, EffectsManager*
         : WEffectParameterBase(pParent, pEffectsManager) {
 }
 
-WEffectButtonParameter::~WEffectButtonParameter() {
-}
-
-void WEffectButtonParameter::setup(QDomNode node, const SkinContext& context) {
+void WEffectButtonParameter::setup(const QDomNode& node, const SkinContext& context) {
+    WLabel::setup(node, context);
     // EffectWidgetUtils propagates NULLs so this is all safe.
     EffectRackPointer pRack = EffectWidgetUtils::getEffectRackFromNode(
             node, context, m_pEffectsManager);

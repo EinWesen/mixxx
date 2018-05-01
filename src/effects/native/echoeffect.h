@@ -3,53 +3,64 @@
 
 #include <QMap>
 
-#include "util.h"
-#include "util/defs.h"
-#include "util/types.h"
+#include "effects/effectprocessor.h"
+#include "engine/engine.h"
 #include "engine/effects/engineeffect.h"
 #include "engine/effects/engineeffectparameter.h"
-#include "effects/effectprocessor.h"
-#include "sampleutil.h"
+#include "util/class.h"
+#include "util/defs.h"
+#include "util/sample.h"
+#include "util/samplebuffer.h"
 
-struct EchoGroupState {
-    EchoGroupState() {
-        delay_buf = SampleUtil::alloc(MAX_BUFFER_LEN);
-        SampleUtil::applyGain(delay_buf, 0, MAX_BUFFER_LEN);
-        prev_delay_time = 0.0;
+class EchoGroupState : public EffectState {
+  public:
+    // 3 seconds max. This supports the full range of 2 beats for tempos down to
+    // 40 BPM.
+    static constexpr int kMaxDelaySeconds = 3;
+
+    EchoGroupState(const mixxx::EngineParameters bufferParameters)
+           : EffectState(bufferParameters) {
+        audioParametersChanged(bufferParameters);
+       clear();
+    }
+
+    void audioParametersChanged(const mixxx::EngineParameters bufferParameters) {
+        delay_buf = mixxx::SampleBuffer(kMaxDelaySeconds
+                * bufferParameters.sampleRate() * bufferParameters.channelCount());
+    };
+
+    void clear() {
+        delay_buf.clear();
+        prev_send = 0.0f;
+        prev_feedback= 0.0f;
         prev_delay_samples = 0;
         write_position = 0;
-        ping_pong_left = true;
-    }
-    ~EchoGroupState() {
-        SampleUtil::free(delay_buf);
-    }
-    CSAMPLE* delay_buf;
-    double prev_delay_time;
+        ping_pong = 0;
+    };
+
+    mixxx::SampleBuffer delay_buf;
+    CSAMPLE_GAIN prev_send;
+    CSAMPLE_GAIN prev_feedback;
     int prev_delay_samples;
     int write_position;
-    bool ping_pong_left;
+    int ping_pong;
 };
 
-class EchoEffect : public PerChannelEffectProcessor<EchoGroupState> {
+class EchoEffect : public EffectProcessorImpl<EchoGroupState> {
   public:
     EchoEffect(EngineEffect* pEffect, const EffectManifest& manifest);
-    virtual ~EchoEffect();
 
     static QString getId();
     static EffectManifest getManifest();
 
-    // See effectprocessor.h
     void processChannel(const ChannelHandle& handle,
                         EchoGroupState* pState,
                         const CSAMPLE* pInput, CSAMPLE* pOutput,
-                        const unsigned int numSamples,
-                        const unsigned int sampleRate,
-                        const EffectProcessor::EnableState enableState,
-                        const GroupFeatureState& groupFeatures);
+                        const mixxx::EngineParameters& bufferParameters,
+                        const EffectEnableState enableState,
+                        const GroupFeatureState& groupFeatures) override;
 
   private:
-    int getDelaySamples(double delay_time, const unsigned int sampleRate) const;
-
     QString debugString() const {
         return getId();
     }
@@ -58,6 +69,8 @@ class EchoEffect : public PerChannelEffectProcessor<EchoGroupState> {
     EngineEffectParameter* m_pSendParameter;
     EngineEffectParameter* m_pFeedbackParameter;
     EngineEffectParameter* m_pPingPongParameter;
+    EngineEffectParameter* m_pQuantizeParameter;
+    EngineEffectParameter* m_pTripletParameter;
 
     DISALLOW_COPY_AND_ASSIGN(EchoEffect);
 };

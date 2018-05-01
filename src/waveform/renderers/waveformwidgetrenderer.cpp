@@ -3,17 +3,19 @@
 #include "waveform/renderers/waveformwidgetrenderer.h"
 #include "waveform/waveform.h"
 #include "widget/wwidget.h"
-#include "controlobject.h"
-#include "controlobjectslave.h"
-#include "visualplayposition.h"
+#include "control/controlobject.h"
+#include "control/controlproxy.h"
+#include "waveform/visualplayposition.h"
 #include "util/math.h"
 #include "util/performancetimer.h"
 
 const int WaveformWidgetRenderer::s_waveformMinZoom = 1;
-const int WaveformWidgetRenderer::s_waveformMaxZoom = 6;
+const int WaveformWidgetRenderer::s_waveformMaxZoom = 10;
+const int WaveformWidgetRenderer::s_waveformDefaultZoom = 3;
 
 WaveformWidgetRenderer::WaveformWidgetRenderer(const char* group)
     : m_group(group),
+      m_orientation(Qt::Horizontal),
       m_height(-1),
       m_width(-1),
 
@@ -25,6 +27,7 @@ WaveformWidgetRenderer::WaveformWidgetRenderer(const char* group)
       m_rateAdjust(0.0),
       m_visualSamplePerPixel(1.0),
       m_audioSamplePerPixel(1.0),
+      m_enableBeatGrid(true),
 
       // Really create some to manage those;
       m_visualPlayPosition(NULL),
@@ -39,7 +42,8 @@ WaveformWidgetRenderer::WaveformWidgetRenderer(const char* group)
       m_pGainControlObject(NULL),
       m_gain(1.0),
       m_pTrackSamplesControlObject(NULL),
-      m_trackSamples(0.0) {
+      m_trackSamples(0.0),
+      m_scaleFactor(1.0) {
 
     //qDebug() << "WaveformWidgetRenderer";
 
@@ -47,9 +51,11 @@ WaveformWidgetRenderer::WaveformWidgetRenderer(const char* group)
     m_timer = new QTime();
     currentFrame = 0;
     m_lastFrameTime = 0;
+    for (int i = 0; i < 100; ++i) {
+        m_lastFramesTime[i] = 0;
+    }
     m_lastSystemFrameTime = 0;
     for (int i = 0; i < 100; ++i) {
-        m_lastSystemFramesTime[i] = 0;
         m_lastSystemFramesTime[i] = 0;
     }
 #endif
@@ -77,15 +83,15 @@ bool WaveformWidgetRenderer::init() {
     //qDebug() << "WaveformWidgetRenderer::init";
     m_visualPlayPosition = VisualPlayPosition::getVisualPlayPosition(m_group);
 
-    m_pRateControlObject = new ControlObjectSlave(
+    m_pRateControlObject = new ControlProxy(
             m_group, "rate");
-    m_pRateRangeControlObject = new ControlObjectSlave(
+    m_pRateRangeControlObject = new ControlProxy(
             m_group, "rateRange");
-    m_pRateDirControlObject = new ControlObjectSlave(
+    m_pRateDirControlObject = new ControlProxy(
             m_group, "rate_dir");
-    m_pGainControlObject = new ControlObjectSlave(
+    m_pGainControlObject = new ControlProxy(
             m_group, "total_gain");
-    m_pTrackSamplesControlObject = new ControlObjectSlave(
+    m_pTrackSamplesControlObject = new ControlProxy(
             m_group, "track_samples");
 
     for (int i = 0; i < m_rendererStack.size(); ++i) {
@@ -114,11 +120,12 @@ void WaveformWidgetRenderer::onPreRender(VSyncThread* vsyncThread) {
     //Legacy stuff (Ryan it that OK?) -> Limit our rate adjustment to < 99%, "Bad Things" might happen otherwise.
     m_rateAdjust = m_rateDir * math_min(0.99, m_rate * m_rateRange);
 
-    //rate adjust may have change sampling per
-    //vRince for the moment only more than one sample per pixel is supported
-    //due to the fact we play the visual play pos modulo floor m_visualSamplePerPixel ...
-    double visualSamplePerPixel = m_zoomFactor * (1.0 + m_rateAdjust);
-    m_visualSamplePerPixel = math_max(1.0, visualSamplePerPixel);
+    // Compute visual sample to pixel ratio
+    // Allow waveform to spread one visual sample across a hundred pixels
+    // NOTE: The hundred pixel limit is totally arbitrary. Theoretically,
+    // there should be no limit to how far the waveforms can be zoomed in.
+    double visualSamplePerPixel = m_zoomFactor * (1.0 + m_rateAdjust) / m_scaleFactor;
+    m_visualSamplePerPixel = math_max(0.01, visualSamplePerPixel);
 
     TrackPointer pTrack(m_pTrack);
     ConstWaveformPointer pWaveform = pTrack ? pTrack->getWaveform() : ConstWaveformPointer();
@@ -136,9 +143,9 @@ void WaveformWidgetRenderer::onPreRender(VSyncThread* vsyncThread) {
         // Track length in pixels.
         m_trackPixelCount = static_cast<double>(m_trackSamples) / 2.0 / m_audioSamplePerPixel;
 
-        // Ratio of half the width of the renderer to the track length in
+        // Ratio of half the length of the renderer to the track length in
         // pixels. Percent of the track shown in half the waveform widget.
-        double displayedLengthHalf = static_cast<double>(m_width) / m_trackPixelCount / 2.0;
+        double displayedLengthHalf = static_cast<double>(getLength()) / m_trackPixelCount / 2.0;
         // Avoid pixel jitter in play position by rounding to the nearest track
         // pixel.
         m_playPos = round(truePlayPos * m_trackPixelCount) / m_trackPixelCount; // Avoid pixel jitter in play position
@@ -164,7 +171,7 @@ void WaveformWidgetRenderer::onPreRender(VSyncThread* vsyncThread) {
 void WaveformWidgetRenderer::draw(QPainter* painter, QPaintEvent* event) {
 
 #ifdef WAVEFORMWIDGETRENDERER_DEBUG
-    m_lastSystemFrameTime = m_timer->restart();
+    m_lastSystemFrameTime = m_timer->restart().toIntegerNanos();
 #endif
 
     //PerformanceTimer timer;
@@ -180,17 +187,26 @@ void WaveformWidgetRenderer::draw(QPainter* painter, QPaintEvent* event) {
         return;
     } else {
         for (int i = 0; i < stackSize; i++) {
-            // qDebug() << i << " a  " << timer.restart();
+            // qDebug() << i << " a  " << timer.restart().formatNanosWithUnit();
             m_rendererStack.at(i)->draw(painter, event);
-            // qDebug() << i << " e " << timer.restart();
+            // qDebug() << i << " e " << timer.restart().formatNanosWithUnit();
         }
 
         painter->setPen(m_colors.getPlayPosColor());
-        painter->drawLine(m_width/2,0,m_width/2,m_height);
+        if (m_orientation == Qt::Horizontal) {
+            painter->drawLine(m_width / 2, 0, m_width / 2, m_height);
+        } else {
+            painter->drawLine(0, m_height / 2, m_width, m_height / 2);
+        }
         painter->setOpacity(0.5);
         painter->setPen(m_colors.getBgColor());
-        painter->drawLine(m_width/2 + 1,0,m_width/2 + 1,m_height);
-        painter->drawLine(m_width/2 - 1,0,m_width/2 - 1,m_height);
+        if (m_orientation == Qt::Horizontal) {
+            painter->drawLine(m_width / 2 + 1, 0, m_width / 2 + 1, m_height);
+            painter->drawLine(m_width / 2 - 1, 0, m_width / 2 - 1, m_height);
+        } else {
+            painter->drawLine(0, m_height / 2 + 1, m_width, m_height / 2 + 1);
+            painter->drawLine(0, m_height / 2 - 1, m_width, m_height / 2 - 1);
+        }
     }
 
 #ifdef WAVEFORMWIDGETRENDERER_DEBUG
@@ -218,7 +234,7 @@ void WaveformWidgetRenderer::draw(QPainter* painter, QPaintEvent* event) {
                       QString::number(m_rateDir) + " | " +
                       QString::number(m_zoomFactor));
 
-    m_lastFrameTime = m_timer->restart();
+    m_lastFrameTime = m_timer->restart().toIntegerNanos();
 
     ++currentFrame;
     currentFrame = currentFrame%100;
@@ -226,7 +242,7 @@ void WaveformWidgetRenderer::draw(QPainter* painter, QPaintEvent* event) {
     m_lastFramesTime[currentFrame] = m_lastFrameTime;
 #endif
 
-    //qDebug() << "draw() ende" << timer.restart();
+    //qDebug() << "draw() ende" << timer.restart().formatNanosWithUnit();
 }
 
 void WaveformWidgetRenderer::resize(int width, int height) {
@@ -238,9 +254,19 @@ void WaveformWidgetRenderer::resize(int width, int height) {
     }
 }
 
-void WaveformWidgetRenderer::setup(const QDomNode& node, const SkinContext& context) {
+void WaveformWidgetRenderer::setup(
+        const QDomNode& node, const SkinContext& context) {
+    m_scaleFactor = context.getScaleFactor();
+    QString orientationString = context.selectString(node, "Orientation").toLower();
+    if (orientationString == "vertical") {
+        m_orientation = Qt::Vertical;
+    } else {
+        m_orientation = Qt::Horizontal;
+    }
+
     m_colors.setup(node, context);
     for (int i = 0; i < m_rendererStack.size(); ++i) {
+        m_rendererStack[i]->setScaleFactor(m_scaleFactor);
         m_rendererStack[i]->setup(node, context);
     }
 }
@@ -248,6 +274,10 @@ void WaveformWidgetRenderer::setup(const QDomNode& node, const SkinContext& cont
 void WaveformWidgetRenderer::setZoom(int zoom) {
     //qDebug() << "WaveformWidgetRenderer::setZoom" << zoom;
     m_zoomFactor = math_clamp<double>(zoom, s_waveformMinZoom, s_waveformMaxZoom);
+}
+
+void WaveformWidgetRenderer::setDisplayBeatGrid(bool set) {
+    m_enableBeatGrid = set;
 }
 
 void WaveformWidgetRenderer::setTrack(TrackPointer track) {

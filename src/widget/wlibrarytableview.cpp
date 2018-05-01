@@ -12,16 +12,18 @@
 #include "util/math.h"
 
 WLibraryTableView::WLibraryTableView(QWidget* parent,
-                                     ConfigObject<ConfigValue>* pConfig,
+                                     UserSettingsPointer pConfig,
                                      ConfigKey vScrollBarPosKey)
         : QTableView(parent),
           m_pConfig(pConfig),
           m_vScrollBarPosKey(vScrollBarPosKey) {
 
+    loadVScrollBarPosState();
+
     // Setup properties for table
 
     // Editing starts when clicking on an already selected item.
-    setEditTriggers(QAbstractItemView::SelectedClicked);
+    setEditTriggers(QAbstractItemView::SelectedClicked|QAbstractItemView::EditKeyPressed);
 
     //Enable selection by rows and extended selection (ctrl/shift click)
     setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -42,8 +44,6 @@ WLibraryTableView::WLibraryTableView(QWidget* parent,
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     setAlternatingRowColors(true);
 
-    loadVScrollBarPosState();
-
     connect(verticalScrollBar(), SIGNAL(valueChanged(int)),
             this, SIGNAL(scrollValueChanged(int)));
 
@@ -51,8 +51,6 @@ WLibraryTableView::WLibraryTableView(QWidget* parent,
 }
 
 WLibraryTableView::~WLibraryTableView() {
-    qDebug() << "~WLibraryTableView";
-    saveVScrollBarPosState();
 }
 
 void WLibraryTableView::loadVScrollBarPosState() {
@@ -86,7 +84,7 @@ void WLibraryTableView::saveVScrollBarPosState() {
 void WLibraryTableView::moveSelection(int delta) {
     QAbstractItemModel* pModel = model();
 
-    if (pModel == NULL) {
+    if (pModel == nullptr) {
         return;
     }
 
@@ -96,18 +94,35 @@ void WLibraryTableView::moveSelection(int delta) {
         if(delta > 0) {
             // i is positive, so we want to move the highlight down
             int row = current.row();
-            if (row + 1 < pModel->rowCount())
+            if (row + 1 < pModel->rowCount()) {
                 selectRow(row + 1);
+            }
 
             delta--;
         } else {
             // i is negative, so we want to move the highlight up
             int row = current.row();
-            if (row - 1 >= 0)
+            if (row - 1 >= 0) {
                 selectRow(row - 1);
+            }
 
             delta++;
         }
+    }
+}
+
+void WLibraryTableView::saveVScrollBarPos(TrackModel* key){
+    m_vScrollBarPosValues[key] = verticalScrollBar()->value();
+}
+
+void WLibraryTableView::restoreVScrollBarPos(TrackModel* key){
+    updateGeometries();
+
+    if (m_vScrollBarPosValues.contains(key)){
+        verticalScrollBar()->setValue(m_vScrollBarPosValues[key]);
+    }else{
+        m_vScrollBarPosValues[key] = 0;
+        verticalScrollBar()->setValue(0);
     }
 }
 
@@ -120,6 +135,13 @@ void WLibraryTableView::setTrackTableRowHeight(int rowHeight) {
     QFontMetrics metrics(font());
     int fontHeightPx = metrics.height();
     verticalHeader()->setDefaultSectionSize(math_max(
-            rowHeight, fontHeightPx));
+                                                rowHeight, fontHeightPx));
 }
 
+void WLibraryTableView::setSelectedClick(bool enable) {
+    if (enable) {
+        setEditTriggers(QAbstractItemView::SelectedClicked|QAbstractItemView::EditKeyPressed);
+    } else {
+        setEditTriggers(QAbstractItemView::EditKeyPressed);
+    }
+}

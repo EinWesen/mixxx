@@ -13,41 +13,36 @@ WKnobComposed::WKnobComposed(QWidget* pParent)
           m_dKnobCenterYOffset(0) {
 }
 
-WKnobComposed::~WKnobComposed() {
-}
-
-void WKnobComposed::setup(QDomNode node, const SkinContext& context) {
+void WKnobComposed::setup(const QDomNode& node, const SkinContext& context) {
     clear();
 
+    double scaleFactor = context.getScaleFactor();
+
     // Set background pixmap if available
-    if (context.hasNode(node, "BackPath")) {
-        QDomElement backPathElement = context.selectElement(node, "BackPath");
-        setPixmapBackground(context.getPixmapSource(backPathElement),
-                            context.selectScaleMode(backPathElement, Paintable::STRETCH));
+    QDomElement backPathElement = context.selectElement(node, "BackPath");
+    if (!backPathElement.isNull()) {
+        setPixmapBackground(
+                context.getPixmapSource(backPathElement),
+                context.selectScaleMode(backPathElement, Paintable::STRETCH),
+                scaleFactor);
     }
 
     // Set knob pixmap if available
-    if (context.hasNode(node, "Knob")) {
-        QDomElement knobNode = context.selectElement(node, "Knob");
-        setPixmapKnob(context.getPixmapSource(knobNode),
-                      context.selectScaleMode(knobNode, Paintable::STRETCH));
+    QDomElement knobNode = context.selectElement(node, "Knob");
+    if (!knobNode.isNull()) {
+        setPixmapKnob(
+                context.getPixmapSource(knobNode),
+                context.selectScaleMode(knobNode, Paintable::STRETCH),
+                scaleFactor);
     }
 
-    if (context.hasNode(node, "MinAngle")) {
-        m_dMinAngle = context.selectDouble(node, "MinAngle");
-    }
+    context.hasNodeSelectDouble(node, "MinAngle", &m_dMinAngle);
+    context.hasNodeSelectDouble(node, "MaxAngle", &m_dMaxAngle);
+    context.hasNodeSelectDouble(node, "KnobCenterXOffset", &m_dKnobCenterXOffset);
+    context.hasNodeSelectDouble(node, "KnobCenterYOffset", &m_dKnobCenterYOffset);
 
-    if (context.hasNode(node, "MaxAngle")) {
-        m_dMaxAngle = context.selectDouble(node, "MaxAngle");
-    }
-
-    if (context.hasNode(node, "KnobCenterXOffset")) {
-        m_dKnobCenterXOffset = context.selectDouble(node, "KnobCenterXOffset");
-    }
-
-    if (context.hasNode(node, "KnobCenterYOffset")) {
-        m_dKnobCenterYOffset = context.selectDouble(node, "KnobCenterYOffset");
-    }
+    m_dKnobCenterXOffset *= scaleFactor;
+    m_dKnobCenterYOffset *= scaleFactor;
 }
 
 void WKnobComposed::clear() {
@@ -56,8 +51,9 @@ void WKnobComposed::clear() {
 }
 
 void WKnobComposed::setPixmapBackground(PixmapSource source,
-                                        Paintable::DrawMode mode) {
-    m_pPixmapBack = WPixmapStore::getPaintable(source, mode);
+                                        Paintable::DrawMode mode,
+                                        double scaleFactor) {
+    m_pPixmapBack = WPixmapStore::getPaintable(source, mode, scaleFactor);
     if (m_pPixmapBack.isNull() || m_pPixmapBack->isNull()) {
         qDebug() << metaObject()->className()
                  << "Error loading background pixmap:" << source.getPath();
@@ -65,8 +61,9 @@ void WKnobComposed::setPixmapBackground(PixmapSource source,
 }
 
 void WKnobComposed::setPixmapKnob(PixmapSource source,
-                                  Paintable::DrawMode mode) {
-    m_pKnob = WPixmapStore::getPaintable(source, mode);
+                                  Paintable::DrawMode mode,
+                                  double scaleFactor) {
+    m_pKnob = WPixmapStore::getPaintable(source, mode, scaleFactor);
     if (m_pKnob.isNull() || m_pKnob->isNull()) {
         qDebug() << metaObject()->className()
                  << "Error loading knob pixmap:" << source.getPath();
@@ -111,7 +108,7 @@ void WKnobComposed::paintEvent(QPaintEvent* e) {
         m_dCurrentAngle = m_dMinAngle + (m_dMaxAngle - m_dMinAngle) * getControlParameterDisplay();
         p.rotate(m_dCurrentAngle);
 
-        // Need to convert from QRect to a QRectF to avoid losing precison.
+        // Need to convert from QRect to a QRectF to avoid losing precision.
         QRectF targetRect = rect();
         m_pKnob->drawCentered(transform.mapRect(targetRect), &p,
                               m_pKnob->rect());

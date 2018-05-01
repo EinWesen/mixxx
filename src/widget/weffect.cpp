@@ -11,10 +11,7 @@ WEffect::WEffect(QWidget* pParent, EffectsManager* pEffectsManager)
     effectUpdated();
 }
 
-WEffect::~WEffect() {
-}
-
-void WEffect::setup(QDomNode node, const SkinContext& context) {
+void WEffect::setup(const QDomNode& node, const SkinContext& context) {
     WLabel::setup(node, context);
     // EffectWidgetUtils propagates NULLs so this is all safe.
     EffectRackPointer pRack = EffectWidgetUtils::getEffectRackFromNode(
@@ -47,8 +44,8 @@ void WEffect::effectUpdated() {
         EffectPointer pEffect = m_pEffectSlot->getEffect();
         if (pEffect) {
             const EffectManifest& manifest = pEffect->getManifest();
-            name = manifest.name();
-            description = manifest.description();
+            name = manifest.displayName();
+            description = QString("%1\n%2").arg(manifest.name(), manifest.description());
         }
     } else {
         name = tr("None");

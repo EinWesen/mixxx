@@ -10,10 +10,11 @@
 #include <QString>
 #include <QStringList>
 
-#include "trackinfoobject.h"
+#include "track/track.h"
 #include "proto/keys.pb.h"
 #include "util/assert.h"
 #include "util/memory.h"
+#include "library/crate/cratestorage.h"
 
 QVariant getTrackValueForColumn(const TrackPointer& pTrack, const QString& column);
 
@@ -90,6 +91,21 @@ class TextFilterNode : public QueryNode {
     QString m_argument;
 };
 
+class CrateFilterNode : public QueryNode {
+  public:
+    CrateFilterNode(const CrateStorage* pCrateStorage,
+                    const QString& crateNameLike);
+
+    bool match(const TrackPointer& pTrack) const override;
+    QString toSql() const override;
+
+  private:
+    const CrateStorage* m_pCrateStorage;
+    QString m_crateNameLike;
+    mutable bool m_matchInitialized;
+    mutable std::vector<TrackId> m_matchingTrackIds;
+};
+
 class NumericFilterNode : public QueryNode {
   public:
     NumericFilterNode(const QStringList& sqlColumns, const QString& argument);
@@ -141,7 +157,7 @@ class KeyFilterNode : public QueryNode {
 class SqlNode : public QueryNode {
   public:
     explicit SqlNode(const QString& sqlExpression)
-            // No need to wrap into parantheses here! This will be done
+            // No need to wrap into parentheses here! This will be done
             // later in toSql() if this node is a component of another
             // composite node.
             : m_sql(sqlExpression) {

@@ -5,41 +5,43 @@
 #include <QList>
 #include <QDir>
 
-#include "configobject.h"
+#include "preferences/usersettings.h"
 
-class MixxxKeyboard;
+class KeyboardEventFilter;
 class PlayerManager;
 class ControllerManager;
 class Library;
 class VinylControlManager;
 class EffectsManager;
+class RecordingManager;
 class LaunchImage;
 
 class SkinLoader {
   public:
-    SkinLoader(ConfigObject<ConfigValue>* pConfig);
+    SkinLoader(UserSettingsPointer pConfig);
     virtual ~SkinLoader();
 
-    QWidget* loadDefaultSkin(QWidget* pParent,
-                             MixxxKeyboard* pKeyboard,
-                             PlayerManager* pPlayerManager,
-                             ControllerManager* pControllerManager,
-                             Library* pLibrary,
-                             VinylControlManager* pVCMan,
-                             EffectsManager* pEffectsManager);
+    QWidget* loadConfiguredSkin(QWidget* pParent,
+                                KeyboardEventFilter* pKeyboard,
+                                PlayerManager* pPlayerManager,
+                                ControllerManager* pControllerManager,
+                                Library* pLibrary,
+                                VinylControlManager* pVCMan,
+                                EffectsManager* pEffectsManager,
+                                RecordingManager* pRecordingManager);
 
     LaunchImage* loadLaunchImage(QWidget* pParent);
 
-    QString getSkinPath();
-    QList<QDir> getSkinSearchPaths();
+    QString getSkinPath(const QString& skinName) const;
+    QPixmap getSkinPreview(const QString& skinName) const;
+    QString getConfiguredSkinPath() const;
+    QString getDefaultSkinName() const;
+    QList<QDir> getSkinSearchPaths() const;
 
   private:
-    QString getConfiguredSkinPath();
-    QString getDefaultSkinName() const;
-    QString getDefaultSkinPath();
-    QString pickResizableSkin(QString oldSkin);
+    QString pickResizableSkin(QString oldSkin) const;
 
-    ConfigObject<ConfigValue>* m_pConfig;
+    UserSettingsPointer m_pConfig;
 };
 
 

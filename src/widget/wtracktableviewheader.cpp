@@ -103,9 +103,6 @@ WTrackTableViewHeader::WTrackTableViewHeader(Qt::Orientation orientation,
             this, SLOT(showOrHideColumn(int)));
 }
 
-WTrackTableViewHeader::~WTrackTableViewHeader() {
-}
-
 void WTrackTableViewHeader::contextMenuEvent(QContextMenuEvent* event) {
     m_menu.popup(event->globalPos());
 }
@@ -156,13 +153,13 @@ void WTrackTableViewHeader::setModel(QAbstractItemModel* model) {
         }
 
         QString title = model->headerData(i, orientation()).toString();
-        QAction* action = new QAction(title, &m_menu);
+        auto action = new QAction(title, &m_menu);
         action->setCheckable(true);
 
         /* If Mixxx starts the first time or the header states have been cleared
          * due to database schema evolution we gonna hide all columns that may
          * contain a potential large number of NULL values.  Here we uncheck
-         * item in the context menu that are hidden by defualt (e.g., key
+         * item in the context menu that are hidden by default (e.g., key
          * column)
          */
         if (!hasPersistedHeaderState() &&
@@ -248,10 +245,7 @@ bool WTrackTableViewHeader::hasPersistedHeaderState() {
         return false;
     }
     QString headerStateString = track_model->getModelSetting("header_state_pb");
-    if (!headerStateString.isNull()) {
-        return true;
-    }
-    return false;
+    return !headerStateString.isNull();
 }
 
 void WTrackTableViewHeader::clearActions() {
@@ -287,11 +281,10 @@ void WTrackTableViewHeader::showOrHideColumn(int column) {
 
 int WTrackTableViewHeader::hiddenCount() {
     int count = 0;
-    for (QMap<int, QAction*>::iterator it = m_columnActions.begin();
-         it != m_columnActions.end(); ++it) {
-        QAction* pAction = *it;
-        if (!pAction->isChecked())
+    for (const auto& pAction : m_columnActions) {
+        if (!pAction->isChecked()) {
             count += 1;
+        }
     }
     return count;
 }

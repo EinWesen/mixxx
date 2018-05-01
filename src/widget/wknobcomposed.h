@@ -12,27 +12,37 @@
 #include "widget/wimagestore.h"
 #include "skin/skincontext.h"
 
+// This is used for knobs, if the knob value can be displayed
+// by rotating a single SVG image.
+// For more complex transitions you may consider to use
+// WEffectParameterKnob, which displays one of e.g. 64
+// pixmaps.
 class WKnobComposed : public WWidget {
     Q_OBJECT
   public:
-    WKnobComposed(QWidget* pParent=NULL);
-    virtual ~WKnobComposed();
+    explicit WKnobComposed(QWidget* pParent=nullptr);
 
-    void setup(QDomNode node, const SkinContext& context);
+    void setup(const QDomNode& node, const SkinContext& context);
 
-    void onConnectedControlChanged(double dParameter, double dValue);
+    void onConnectedControlChanged(double dParameter, double dValue) override;
 
   protected:
-    void wheelEvent(QWheelEvent *e);
-    void mouseMoveEvent(QMouseEvent *e);
-    void mousePressEvent(QMouseEvent *e);
-    void mouseReleaseEvent(QMouseEvent *e);
-    void paintEvent(QPaintEvent*);
+    void wheelEvent(QWheelEvent *e) override;
+    void mouseMoveEvent(QMouseEvent *e) override;
+    void mousePressEvent(QMouseEvent *e) override;
+    void mouseReleaseEvent(QMouseEvent *e) override;
+    void paintEvent(QPaintEvent* /*unused*/) override;
 
   private:
     void clear();
-    void setPixmapBackground(PixmapSource source, Paintable::DrawMode mode);
-    void setPixmapKnob(PixmapSource source, Paintable::DrawMode mode);
+    void setPixmapBackground(
+            PixmapSource source,
+            Paintable::DrawMode mode,
+            double scaleFactor);
+    void setPixmapKnob(
+            PixmapSource source,
+            Paintable::DrawMode mode,
+            double scaleFactor);
 
     double m_dCurrentAngle;
     PaintablePointer m_pKnob;

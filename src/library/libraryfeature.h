@@ -12,22 +12,29 @@
 #include <QVariant>
 #include <QAbstractItemModel>
 #include <QUrl>
+#include <QDesktopServices>
+#include <QFileDialog>
 
-#include "trackinfoobject.h"
-#include "treeitemmodel.h"
+#include "track/track.h"
+#include "library/treeitemmodel.h"
 #include "library/coverartcache.h"
+#include "library/dao/trackdao.h"
 
 class TrackModel;
 class WLibrarySidebar;
 class WLibrary;
-class MixxxKeyboard;
+class KeyboardEventFilter;
 
 // pure virtual (abstract) class to provide an interface for libraryfeatures
 class LibraryFeature : public QObject {
   Q_OBJECT
   public:
-    LibraryFeature(QObject* parent = NULL);
-    virtual ~LibraryFeature();
+    explicit LibraryFeature(
+          QObject* parent = nullptr);
+    explicit LibraryFeature(
+            UserSettingsPointer pConfig,
+            QObject* parent = nullptr);
+    ~LibraryFeature() override = default;
 
     virtual QVariant title() = 0;
     virtual QIcon getIcon() = 0;
@@ -56,8 +63,26 @@ class LibraryFeature : public QObject {
 
     // Reimplement this to register custom views with the library widget.
     virtual void bindWidget(WLibrary* /* libraryWidget */,
-                            MixxxKeyboard* /* keyboard */) {}
+                            KeyboardEventFilter* /* keyboard */) {}
     virtual TreeItemModel* getChildModel() = 0;
+
+    virtual bool hasTrackTable() {
+        return false;
+    }
+
+  protected:
+    QStringList getPlaylistFiles() const {
+        return getPlaylistFiles(QFileDialog::ExistingFiles);
+    }
+    QString getPlaylistFile() const {
+        const QStringList playListFiles = getPlaylistFiles();
+        if (playListFiles.isEmpty()) {
+            return QString(); // no file chosen
+        } else {
+            return playListFiles.first();
+        }
+    }
+    UserSettingsPointer m_pConfig;
 
   public slots:
     // called when you single click on the root item
@@ -96,6 +121,9 @@ class LibraryFeature : public QObject {
     // emit this signal to enable/disable the cover art widget
     void enableCoverArtDisplay(bool);
     void trackSelected(TrackPointer pTrack);
+
+  private: 
+    QStringList getPlaylistFiles(QFileDialog::FileMode mode) const;
 };
 
 #endif /* LIBRARYFEATURE_H */

@@ -3,20 +3,20 @@
 
 #include <QMap>
 
-#include "controlobjectslave.h"
+#include "control/controlproxy.h"
 #include "effects/effect.h"
 #include "effects/effectprocessor.h"
 #include "engine/effects/engineeffect.h"
 #include "engine/effects/engineeffectparameter.h"
 #include "engine/enginefilterbiquad1.h"
-#include "util.h"
-#include "util/types.h"
+#include "util/class.h"
 #include "util/defs.h"
-#include "sampleutil.h"
+#include "util/sample.h"
+#include "util/types.h"
 
-class GraphicEQEffectGroupState {
+class GraphicEQEffectGroupState : public EffectState {
   public:
-    GraphicEQEffectGroupState();
+    GraphicEQEffectGroupState(const mixxx::EngineParameters& bufferParameters);
     virtual ~GraphicEQEffectGroupState();
 
     void setFilters(int sampleRate);
@@ -31,7 +31,7 @@ class GraphicEQEffectGroupState {
     float m_centerFrequencies[8];
 };
 
-class GraphicEQEffect : public PerChannelEffectProcessor<GraphicEQEffectGroupState> {
+class GraphicEQEffect : public EffectProcessorImpl<GraphicEQEffectGroupState> {
   public:
     GraphicEQEffect(EngineEffect* pEffect, const EffectManifest& manifest);
     virtual ~GraphicEQEffect();
@@ -39,13 +39,11 @@ class GraphicEQEffect : public PerChannelEffectProcessor<GraphicEQEffectGroupSta
     static QString getId();
     static EffectManifest getManifest();
 
-    // See effectprocessor.h
     void processChannel(const ChannelHandle& handle,
                         GraphicEQEffectGroupState* pState,
                         const CSAMPLE* pInput, CSAMPLE *pOutput,
-                        const unsigned int numSamples,
-                        const unsigned int sampleRate,
-                        const EffectProcessor::EnableState enableState,
+                        const mixxx::EngineParameters& bufferParameters,
+                        const EffectEnableState enableState,
                         const GroupFeatureState& groupFeatureState);
 
   private:

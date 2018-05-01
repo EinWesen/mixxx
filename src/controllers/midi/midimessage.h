@@ -5,7 +5,7 @@
 #include <QPair>
 #include <QMetaType>
 
-#include "configobject.h"
+#include "preferences/usersettings.h"
 
 // The second value of each OpCode will be the channel number the message
 // corresponds to.  So 0xB0 is a CC on the first channel, and 0xB1 is a CC
@@ -81,7 +81,7 @@ struct MidiOptions {
             bool rot64_fast    : 1;
             bool diff          : 1;
             bool button        : 1;    // Button Down (!=00) and Button Up (00) events happen together
-            bool sw            : 1;    // button down (!=00) and button up (00) events happen seperately
+            bool sw            : 1;    // button down (!=00) and button up (00) events happen separately
             bool spread64      : 1;    // accelerated difference from 64
             bool herc_jog      : 1;    // generic Hercules range correction 0x01 -> +1; 0x7f -> -1
             bool selectknob    : 1;    // relative knob which can be turned forever and outputs a signed value
@@ -176,12 +176,12 @@ typedef QList<MidiInputMapping> MidiInputMappings;
 
 struct MidiOutputMapping {
     bool operator==(const MidiOutputMapping& other) const {
-        return output == other.output && control == other.control &&
+        return output == other.output && controlKey == other.controlKey &&
                 description == other.description;
     }
 
     MidiOutput output;
-    ConfigKey control;
+    ConfigKey controlKey;
     QString description;
 };
 typedef QList<MidiOutputMapping> MidiOutputMappings;

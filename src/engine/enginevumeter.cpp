@@ -15,10 +15,11 @@
  ***************************************************************************/
 
 #include "engine/enginevumeter.h"
-#include "controlpotmeter.h"
-#include "controlobjectslave.h"
-#include "sampleutil.h"
+
+#include "control/controlproxy.h"
+#include "control/controlpotmeter.h"
 #include "util/math.h"
+#include "util/sample.h"
 
 EngineVuMeter::EngineVuMeter(QString group) {
     // The VUmeter widget is controlled via a controlpotmeter, which means
@@ -38,7 +39,7 @@ EngineVuMeter::EngineVuMeter(QString group) {
     m_ctrlPeakIndicatorR = new ControlPotmeter(ConfigKey(group, "PeakIndicatorR"),
                                               0., 1.);
 
-    m_pSampleRate = new ControlObjectSlave("[Master]", "samplerate", this);
+    m_pSampleRate = new ControlProxy("[Master]", "samplerate", this);
 
     // Initialize the calculation:
     reset();
@@ -115,11 +116,6 @@ void EngineVuMeter::process(CSAMPLE* pIn, const int iBufferSize) {
     }
 
     m_ctrlPeakIndicator->set(m_ctrlPeakIndicatorR->get() || m_ctrlPeakIndicatorL->get());
-}
-
-void EngineVuMeter::collectFeatures(GroupFeatureState* pGroupFeatures) const {
-    pGroupFeatures->rms_volume_sum = (m_fRMSvolumeL + m_fRMSvolumeR) / 2.0;
-    pGroupFeatures->has_rms_volume_sum = true;
 }
 
 void EngineVuMeter::doSmooth(CSAMPLE &currentVolume, CSAMPLE newVolume)

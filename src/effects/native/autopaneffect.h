@@ -3,15 +3,14 @@
 
 #include <QMap>
 
-#include "util.h"
-#include "util/defs.h"
-#include "util/types.h"
+#include "effects/effectprocessor.h"
 #include "engine/effects/engineeffect.h"
 #include "engine/effects/engineeffectparameter.h"
-#include "effects/effectprocessor.h"
-#include "sampleutil.h"
 #include "engine/enginefilterpansingle.h"
-
+#include "util/class.h"
+#include "util/defs.h"
+#include "util/sample.h"
+#include "util/types.h"
 
 // This class provides a float value that cannot be increased or decreased
 // by more than a given value to avoid clicks.
@@ -19,18 +18,18 @@
 // somewhere else (I hear clicks when I change the period of flanger for example).
 class RampedSample {
   public:
-    
+
     inline RampedSample()
         : ramped(false),
           maxDifference(1.0f),
           initialized(false) {}
-    
+
     virtual ~RampedSample(){};
-    
+
     inline void setRampingThreshold(const float newMaxDifference) {
         maxDifference = newMaxDifference;
     }
-    
+
     inline void setWithRampingApplied(const float newValue) {
         if (!initialized) {
             currentValue = newValue;
@@ -46,13 +45,13 @@ class RampedSample {
             }
         }
     }
-    
+
     inline operator float() {
         return currentValue;
     }
-    
+
     bool ramped;
-    
+
   private:
     float maxDifference;
     float currentValue;
@@ -62,24 +61,23 @@ class RampedSample {
 static const int panMaxDelay = 3300; // allows a 30 Hz filter at 97346;
 // static const int panMaxDelay = 50000; // high for debug;
 
-struct PanGroupState {
-    PanGroupState() {
+class AutoPanGroupState : public EffectState {
+  public:
+    AutoPanGroupState(const mixxx::EngineParameters& bufferParameters)
+            : EffectState(bufferParameters) {
         time = 0;
         delay = new EngineFilterPanSingle<panMaxDelay>();
-        m_pDelayBuf = SampleUtil::alloc(MAX_BUFFER_LEN);
         m_dPreviousPeriod = -1.0;
     }
-    ~PanGroupState() {
-        // todo delete buffer
+    ~AutoPanGroupState() {
     }
     unsigned int time;
     RampedSample frac;
     EngineFilterPanSingle<panMaxDelay>* delay;
-    CSAMPLE* m_pDelayBuf;
     double m_dPreviousPeriod;
 };
 
-class AutoPanEffect : public PerChannelEffectProcessor<PanGroupState> {
+class AutoPanEffect : public EffectProcessorImpl<AutoPanGroupState> {
   public:
     AutoPanEffect(EngineEffect* pEffect, const EffectManifest& manifest);
     virtual ~AutoPanEffect();
@@ -87,28 +85,25 @@ class AutoPanEffect : public PerChannelEffectProcessor<PanGroupState> {
     static QString getId();
     static EffectManifest getManifest();
 
-    // See effectprocessor.h
     void processChannel(const ChannelHandle& handle,
-                      PanGroupState* pState,
-                      const CSAMPLE* pInput, CSAMPLE* pOutput,
-                      const unsigned int numSamples,
-                      const unsigned int sampleRate,
-                      const EffectProcessor::EnableState enableState,
-                      const GroupFeatureState& groupFeatures);
+            AutoPanGroupState* pState,
+            const CSAMPLE* pInput, CSAMPLE* pOutput,
+            const mixxx::EngineParameters& bufferParameters,
+            const EffectEnableState enableState,
+            const GroupFeatureState& groupFeatures);
 
     double computeLawCoefficient(double position);
-    
+
   private:
-    
+
     QString debugString() const {
         return getId();
     }
 
     EngineEffectParameter* m_pSmoothingParameter;
-    EngineEffectParameter* m_pPeriodUnitParameter;
     EngineEffectParameter* m_pPeriodParameter;
     EngineEffectParameter* m_pWidthParameter;
-    
+
     DISALLOW_COPY_AND_ASSIGN(AutoPanEffect);
 };
 

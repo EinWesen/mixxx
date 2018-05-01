@@ -1,20 +1,3 @@
-/***************************************************************************
-                          wknob.h  -  description
-                             -------------------
-    begin                : Fri Jun 21 2002
-    copyright            : (C) 2002 by Tue & Ken Haste Andersen
-    email                : haste@diku.dk
- ***************************************************************************/
-
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
-
 #ifndef WKNOB_H
 #define WKNOB_H
 
@@ -27,17 +10,20 @@
 #include "widget/wdisplay.h"
 #include "widget/knobeventhandler.h"
 
+// This is used for knobs if the knob value is displayed by
+// one of e.g. 64 pixmaps.
+// If the knob value can be displayed by rotating a single
+// SVG, use WKnobComposed.
 class WKnob : public WDisplay {
    Q_OBJECT
   public:
-    WKnob(QWidget* pParent=NULL);
-    virtual ~WKnob();
+    explicit WKnob(QWidget* pParent=nullptr);
 
   protected:
-    void wheelEvent(QWheelEvent *e);
-    void mouseMoveEvent(QMouseEvent *e);
-    void mousePressEvent(QMouseEvent *e);
-    void mouseReleaseEvent(QMouseEvent *e);
+    void wheelEvent(QWheelEvent *e) override;
+    void mouseMoveEvent(QMouseEvent *e) override;
+    void mousePressEvent(QMouseEvent *e) override;
+    void mouseReleaseEvent(QMouseEvent *e) override;
 
   private:
     KnobEventHandler<WKnob> m_handler;

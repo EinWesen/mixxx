@@ -3,23 +3,27 @@
 
 #include <QMap>
 
-#include "controlobjectslave.h"
+#include "control/controlproxy.h"
 #include "effects/effect.h"
 #include "effects/effectprocessor.h"
+#include "effects/native/lvmixeqbase.h"
 #include "engine/effects/engineeffect.h"
 #include "engine/effects/engineeffectparameter.h"
 #include "engine/enginefilterbessel4.h"
 #include "engine/enginefilterdelay.h"
-#include "util.h"
+#include "util/class.h"
 #include "util/types.h"
 #include "util/defs.h"
-#include "lvmixeqbase.h"
 
 class Bessel4LVMixEQEffectGroupState :
         public LVMixEQEffectGroupState<EngineFilterBessel4Low> {
+  public:
+      Bessel4LVMixEQEffectGroupState(const mixxx::EngineParameters& bufferParameters)
+          : LVMixEQEffectGroupState<EngineFilterBessel4Low>(bufferParameters) {
+      }
 };
 
-class Bessel4LVMixEQEffect : public PerChannelEffectProcessor<Bessel4LVMixEQEffectGroupState> {
+class Bessel4LVMixEQEffect : public EffectProcessorImpl<Bessel4LVMixEQEffectGroupState> {
   public:
     Bessel4LVMixEQEffect(EngineEffect* pEffect, const EffectManifest& manifest);
     virtual ~Bessel4LVMixEQEffect();
@@ -31,9 +35,8 @@ class Bessel4LVMixEQEffect : public PerChannelEffectProcessor<Bessel4LVMixEQEffe
     void processChannel(const ChannelHandle& handle,
                         Bessel4LVMixEQEffectGroupState* pState,
                         const CSAMPLE* pInput, CSAMPLE* pOutput,
-                        const unsigned int numSamples,
-                        const unsigned int sampleRate,
-                        const EffectProcessor::EnableState enableState,
+                        const mixxx::EngineParameters& bufferParameters,
+                        const EffectEnableState enableState,
                         const GroupFeatureState& groupFeatureState);
 
   private:
@@ -49,8 +52,8 @@ class Bessel4LVMixEQEffect : public PerChannelEffectProcessor<Bessel4LVMixEQEffe
     EngineEffectParameter* m_pKillMid;
     EngineEffectParameter* m_pKillHigh;
 
-    ControlObjectSlave* m_pLoFreqCorner;
-    ControlObjectSlave* m_pHiFreqCorner;
+    ControlProxy* m_pLoFreqCorner;
+    ControlProxy* m_pHiFreqCorner;
 
     DISALLOW_COPY_AND_ASSIGN(Bessel4LVMixEQEffect);
 };

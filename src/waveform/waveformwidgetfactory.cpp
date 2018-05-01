@@ -8,7 +8,7 @@
 
 #include "waveform/waveformwidgetfactory.h"
 
-#include "controlpotmeter.h"
+#include "control/controlpotmeter.h"
 #include "waveform/widgets/emptywaveformwidget.h"
 #include "waveform/widgets/softwarewaveformwidget.h"
 #include "waveform/widgets/hsvwaveformwidget.h"
@@ -22,8 +22,8 @@
 #include "waveform/widgets/glvsynctestwidget.h"
 #include "waveform/widgets/waveformwidgetabstract.h"
 #include "widget/wwaveformviewer.h"
+#include "waveform/guitick.h"
 #include "waveform/vsyncthread.h"
-
 #include "util/cmdlineargs.h"
 #include "util/performancetimer.h"
 #include "util/timer.h"
@@ -41,7 +41,7 @@ WaveformWidgetAbstractHandle::WaveformWidgetAbstractHandle()
 WaveformWidgetHolder::WaveformWidgetHolder()
     : m_waveformWidget(NULL),
       m_waveformViewer(NULL),
-      m_skinContextCache(NULL, QString()) {
+      m_skinContextCache(UserSettingsPointer(), QString()) {
 }
 
 WaveformWidgetHolder::WaveformWidgetHolder(WaveformWidgetAbstract* waveformWidget,
@@ -62,11 +62,12 @@ WaveformWidgetFactory::WaveformWidgetFactory() :
         m_skipRender(false),
         m_frameRate(30),
         m_endOfTrackWarningTime(30),
-        m_defaultZoom(3),
+        m_defaultZoom(WaveformWidgetRenderer::s_waveformDefaultZoom),
         m_zoomSync(false),
         m_overviewNormalized(false),
         m_openGLAvailable(false),
         m_openGLShaderAvailable(false),
+        m_beatGridEnabled(true),
         m_vsyncThread(NULL),
         m_frameCnt(0),
         m_actualFrameRate(0),
@@ -77,7 +78,7 @@ WaveformWidgetFactory::WaveformWidgetFactory() :
     m_visualGain[Mid] = 1.0;
     m_visualGain[High] = 1.0;
 
-    if (QGLFormat::hasOpenGL()) {
+    if (!CmdlineArgs::Instance().getSafeMode() && QGLFormat::hasOpenGL()) {
         QGLFormat glFormat;
         glFormat.setDirectRendering(true);
         glFormat.setDoubleBuffer(true);
@@ -107,6 +108,33 @@ WaveformWidgetFactory::WaveformWidgetFactory() :
         int minorVersion = 0;
         if (version == QGLFormat::OpenGL_Version_None) {
             m_openGLVersion = "None";
+// Flags introduced in Qt 5.2.
+#if QT_VERSION >= QT_VERSION_CHECK(5, 2, 0)
+        } else if (version & QGLFormat::OpenGL_Version_4_3) {
+            majorVersion = 4;
+            minorVersion = 3;
+        } else if (version & QGLFormat::OpenGL_Version_4_2) {
+            majorVersion = 4;
+            minorVersion = 2;
+        } else if (version & QGLFormat::OpenGL_Version_4_1) {
+            majorVersion = 4;
+            minorVersion = 1;
+#endif
+// Flags introduced in Qt 4.7.
+#if QT_VERSION >= QT_VERSION_CHECK(4, 7, 0)
+        } else if (version & QGLFormat::OpenGL_Version_4_0) {
+            majorVersion = 4;
+            minorVersion = 0;
+        } else if (version & QGLFormat::OpenGL_Version_3_3) {
+            majorVersion = 3;
+            minorVersion = 3;
+        } else if (version & QGLFormat::OpenGL_Version_3_2) {
+            majorVersion = 3;
+            minorVersion = 2;
+        } else if (version & QGLFormat::OpenGL_Version_3_1) {
+            majorVersion = 3;
+            minorVersion = 1;
+#endif
         } else if (version & QGLFormat::OpenGL_Version_3_0) {
             majorVersion = 3;
         } else if (version & QGLFormat::OpenGL_Version_2_1) {
@@ -141,7 +169,8 @@ WaveformWidgetFactory::WaveformWidgetFactory() :
 
         QGLWidget* glWidget = new QGLWidget(); // create paint device
         // QGLShaderProgram::hasOpenGLShaderPrograms(); valgind error
-        m_openGLShaderAvailable = QGLShaderProgram::hasOpenGLShaderPrograms(glWidget->context());
+        m_openGLShaderAvailable =
+                QGLShaderProgram::hasOpenGLShaderPrograms(glWidget->context());
         delete glWidget;
     }
 
@@ -155,7 +184,7 @@ WaveformWidgetFactory::~WaveformWidgetFactory() {
     }
 }
 
-bool WaveformWidgetFactory::setConfig(ConfigObject<ConfigValue> *config) {
+bool WaveformWidgetFactory::setConfig(UserSettingsPointer config) {
     m_config = config;
     if (!m_config) {
         return false;
@@ -174,10 +203,11 @@ bool WaveformWidgetFactory::setConfig(ConfigObject<ConfigValue> *config) {
     if (ok) {
         setEndOfTrackWarningTime(endTime);
     } else {
-        m_config->set(ConfigKey("[Waveform]","EndOfTrackWarningTime"), ConfigValue(m_endOfTrackWarningTime));
+        m_config->set(ConfigKey("[Waveform]","EndOfTrackWarningTime"),
+                ConfigValue(m_endOfTrackWarningTime));
     }
 
-    int vsync = m_config->getValueString(ConfigKey("[Waveform]","VSync"),"0").toInt();
+    int vsync = m_config->getValue(ConfigKey("[Waveform]","VSync"), 0);
     setVSyncType(vsync);
 
     int defaultZoom = m_config->getValueString(ConfigKey("[Waveform]","DefaultZoom")).toInt(&ok);
@@ -194,15 +224,18 @@ bool WaveformWidgetFactory::setConfig(ConfigObject<ConfigValue> *config) {
         m_config->set(ConfigKey("[Waveform]","ZoomSynchronization"), ConfigValue(m_zoomSync));
     }
 
+    bool showBeatGrid = m_config->getValue(ConfigKey("[Waveform]", "beatGridLinesCheckBox"), m_beatGridEnabled);
+    setDisplayBeatGrid(showBeatGrid);
+
     WaveformWidgetType::Type type = static_cast<WaveformWidgetType::Type>(
-                m_config->getValueString(ConfigKey("[Waveform]","WaveformType")).toInt(&ok));
+            m_config->getValueString(ConfigKey("[Waveform]","WaveformType")).toInt(&ok));
     if (!ok || !setWidgetType(type)) {
         setWidgetType(autoChooseWidgetType());
     }
 
     for (int i = 0; i < FilterCount; i++) {
         double visualGain = m_config->getValueString(
-                    ConfigKey("[Waveform]","VisualGain_" + QString::number(i))).toDouble(&ok);
+                ConfigKey("[Waveform]","VisualGain_" + QString::number(i))).toDouble(&ok);
 
         if (ok) {
             setVisualGain(FilterIndex(i), visualGain);
@@ -267,6 +300,7 @@ bool WaveformWidgetFactory::setWaveformWidget(WWaveformViewer* viewer,
     }
 
     viewer->setZoom(m_defaultZoom);
+    viewer->setDisplayBeatGrid(m_beatGridEnabled);
     viewer->update();
 
     qDebug() << "WaveformWidgetFactory::setWaveformWidget - waveform widget added in factory, index" << index;
@@ -279,7 +313,7 @@ void WaveformWidgetFactory::setFrameRate(int frameRate) {
     if (m_config) {
         m_config->set(ConfigKey("[Waveform]","FrameRate"), ConfigValue(m_frameRate));
     }
-    m_vsyncThread->setUsSyncIntervalTime(1e6 / m_frameRate);
+    m_vsyncThread->setSyncIntervalTimeMicros(1e6 / m_frameRate);
 }
 
 void WaveformWidgetFactory::setEndOfTrackWarningTime(int endTime) {
@@ -403,6 +437,22 @@ void WaveformWidgetFactory::setZoomSync(bool sync) {
     }
 }
 
+void WaveformWidgetFactory::setDisplayBeatGrid(bool sync) {
+    m_beatGridEnabled = sync;
+    if (m_config) {
+        m_config->set(ConfigKey("[Waveform]", "beatGridLinesCheckBox"), ConfigValue(m_beatGridEnabled));
+    }
+
+    if (m_waveformWidgetHolders.size() == 0) {
+        return;
+    }
+
+    for (int i = 0; i < m_waveformWidgetHolders.size(); i++) {
+        m_waveformWidgetHolders[i].m_waveformWidget->setDisplayBeatGrid(m_beatGridEnabled);
+    }
+
+}
+
 void WaveformWidgetFactory::setVisualGain(FilterIndex index, double gain) {
     m_visualGain[index] = gain;
     if (m_config)
@@ -470,10 +520,10 @@ void WaveformWidgetFactory::render() {
         //qDebug() << "emit" << m_vsyncThread->elapsed() - t1;
 
         m_frameCnt += 1.0;
-        int timeCnt = m_time.elapsed();
-        if (timeCnt > 1000) {
+        mixxx::Duration timeCnt = m_time.elapsed();
+        if (timeCnt > mixxx::Duration::fromSeconds(1)) {
             m_time.start();
-            m_frameCnt = m_frameCnt * 1000 / timeCnt; // latency correction
+            m_frameCnt = m_frameCnt * 1000 / timeCnt.toIntegerMillis(); // latency correction
             emit(waveformMeasured(m_frameCnt, m_vsyncThread->droppedFrames()));
             m_frameCnt = 0.0;
         }
@@ -494,8 +544,12 @@ void WaveformWidgetFactory::swap() {
                 WaveformWidgetAbstract* pWaveformWidget = m_waveformWidgetHolders[i].m_waveformWidget;
                 if (pWaveformWidget->getWidth() > 0) {
                     QGLWidget* glw = dynamic_cast<QGLWidget*>(pWaveformWidget->getWidget());
-                    if (glw) {
-                        m_vsyncThread->swapGl(glw, i);
+                    // Don't swap invalid or invisible widgets. Prevents
+                    // continuous log spew of "QOpenGLContext::swapBuffers()
+                    // called with non-exposed window, behavior is undefined" on
+                    // Qt5.
+                    if (glw && glw->isValid() && glw->isVisible()) {
+                        VSyncThread::swapGl(glw, i);
                     }
                 }
 
@@ -707,8 +761,8 @@ int WaveformWidgetFactory::findIndexOf(WWaveformViewer* viewer) const {
     return -1;
 }
 
-void WaveformWidgetFactory::startVSync(MixxxMainWindow* mixxxMainWindow) {
-    m_vsyncThread = new VSyncThread(mixxxMainWindow);
+void WaveformWidgetFactory::startVSync(GuiTick* pGuiTick) {
+    m_vsyncThread = new VSyncThread(this, pGuiTick);
     m_vsyncThread->start(QThread::NormalPriority);
 
     connect(m_vsyncThread, SIGNAL(vsyncRender()),

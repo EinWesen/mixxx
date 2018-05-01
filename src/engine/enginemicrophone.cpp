@@ -1,44 +1,37 @@
 // enginemicrophone.cpp
 // created 3/16/2011 by RJ Ryan (rryan@mit.edu)
 
-#include <QtDebug>
-
 #include "engine/enginemicrophone.h"
 
-#include "configobject.h"
-#include "sampleutil.h"
+#include <QtDebug>
+
+#include "preferences/usersettings.h"
+#include "control/control.h"
+#include "control/controlaudiotaperpot.h"
 #include "effects/effectsmanager.h"
 #include "engine/effects/engineeffectsmanager.h"
-#include "controlaudiotaperpot.h"
-
+#include "util/sample.h"
 
 EngineMicrophone::EngineMicrophone(const ChannelHandleAndGroup& handle_group,
                                    EffectsManager* pEffectsManager)
-        : EngineChannel(handle_group, EngineChannel::CENTER),
-          m_pEngineEffectsManager(pEffectsManager ? pEffectsManager->getEngineEffectsManager() : NULL),
-          m_vuMeter(getGroup()),
-          m_pEnabled(new ControlObject(ConfigKey(getGroup(), "enabled"))),
+        : EngineChannel(handle_group, EngineChannel::CENTER, pEffectsManager, true),
+          m_pInputConfigured(new ControlObject(ConfigKey(getGroup(), "input_configured"))),
           m_pPregain(new ControlAudioTaperPot(ConfigKey(getGroup(), "pregain"), -12, 12, 0.5)),
-          m_sampleBuffer(NULL),
           m_wasActive(false) {
-    if (pEffectsManager != NULL) {
-        pEffectsManager->registerChannel(handle_group);
-    }
+    // Make input_configured read-only.
+    m_pInputConfigured->setReadOnly();
+    ControlDoublePrivate::insertAlias(ConfigKey(getGroup(), "enabled"),
+                                      ConfigKey(getGroup(), "input_configured"));
 
     setMaster(false); // Use "talkover" button to enable microphones
-
-    m_pSampleRate = new ControlObjectSlave("[Master]", "samplerate");
 }
 
 EngineMicrophone::~EngineMicrophone() {
-    qDebug() << "~EngineMicrophone()";
-    delete m_pSampleRate;
-    delete m_pEnabled;
     delete m_pPregain;
 }
 
 bool EngineMicrophone::isActive() {
-    bool enabled = m_pEnabled->get() > 0.0;
+    bool enabled = m_pInputConfigured->toBool();
     if (enabled && m_sampleBuffer) {
         m_wasActive = true;
     } else if (m_wasActive) {
@@ -55,7 +48,7 @@ void EngineMicrophone::onInputConfigured(AudioInput input) {
         return;
     }
     m_sampleBuffer = NULL;
-    m_pEnabled->set(1.0);
+    m_pInputConfigured->forceSet(1.0);
 }
 
 void EngineMicrophone::onInputUnconfigured(AudioInput input) {
@@ -65,7 +58,7 @@ void EngineMicrophone::onInputUnconfigured(AudioInput input) {
         return;
     }
     m_sampleBuffer = NULL;
-    m_pEnabled->set(0.0);
+    m_pInputConfigured->forceSet(0.0);
 }
 
 void EngineMicrophone::receiveBuffer(AudioInput input, const CSAMPLE* pBuffer,
@@ -82,20 +75,21 @@ void EngineMicrophone::process(CSAMPLE* pOut, const int iBufferSize) {
     double pregain =  m_pPregain->get();
     if (sampleBuffer) {
         SampleUtil::copyWithGain(pOut, sampleBuffer, pregain, iBufferSize);
+        EngineEffectsManager* pEngineEffectsManager = m_pEffectsManager->getEngineEffectsManager();
+        if (pEngineEffectsManager != nullptr) {
+            pEngineEffectsManager->processPreFaderInPlace(
+                m_group.handle(), m_pEffectsManager->getMasterHandle(),
+                pOut, iBufferSize, m_pSampleRate->get());
+        }
     } else {
         SampleUtil::clear(pOut, iBufferSize);
     }
     m_sampleBuffer = NULL;
 
-    if (m_pEngineEffectsManager != NULL) {
-        // Process effects enabled for this channel
-        GroupFeatureState features;
-        // This is out of date by a callback but some effects will want the RMS
-        // volume.
-        m_vuMeter.collectFeatures(&features);
-        m_pEngineEffectsManager->process(getHandle(), pOut, iBufferSize,
-                                         m_pSampleRate->get(), features);
-    }
     // Update VU meter
     m_vuMeter.process(pOut, iBufferSize);
+}
+
+void EngineMicrophone::collectFeatures(GroupFeatureState* pGroupFeatures) const {
+    m_vuMeter.collectFeatures(pGroupFeatures);
 }

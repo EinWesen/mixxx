@@ -10,10 +10,12 @@
 
 #include "controllers/midi/midiutils.h"
 #include "controllers/defs_controllers.h"
-#include "controlobject.h"
+#include "controllers/controllerdebug.h"
+#include "control/controlobject.h"
 #include "errordialoghandler.h"
-#include "playermanager.h"
+#include "mixer/playermanager.h"
 #include "util/math.h"
+#include "util/screensaver.h"
 
 MidiController::MidiController()
         : Controller() {
@@ -57,9 +59,9 @@ bool MidiController::savePreset(const QString fileName) const {
     return handler.save(m_preset, getName(), fileName);
 }
 
-void MidiController::applyPreset(QList<QString> scriptPaths) {
+bool MidiController::applyPreset(QList<QString> scriptPaths, bool initializeScripts) {
     // Handles the engine
-    Controller::applyPreset(scriptPaths);
+    bool result = Controller::applyPreset(scriptPaths, initializeScripts);
 
     // Only execute this code if this is an output device
     if (isOutputDevice()) {
@@ -69,6 +71,7 @@ void MidiController::applyPreset(QList<QString> scriptPaths) {
         createOutputHandlers();
         updateAllOutputs();
     }
+    return result;
 }
 
 void MidiController::createOutputHandlers() {
@@ -83,8 +86,8 @@ void MidiController::createOutputHandlers() {
 
         const MidiOutputMapping& mapping = outIt.value();
 
-        QString group = mapping.control.group;
-        QString key = mapping.control.item;
+        QString group = mapping.controlKey.group;
+        QString key = mapping.controlKey.item;
 
         unsigned char status = mapping.output.status;
         unsigned char control = mapping.output.control;
@@ -93,16 +96,14 @@ void MidiController::createOutputHandlers() {
         double min = mapping.output.min;
         double max = mapping.output.max;
 
-        if (debugging()) {
-            qDebug() << QString(
+        controllerDebug(QString(
                 "Creating output handler for %1,%2 between %3 and %4 to MIDI out: 0x%5 0x%6, on: 0x%7 off: 0x%8")
-                    .arg(group, key,
-                            QString::number(min), QString::number(max),
-                            QString::number(status, 16).toUpper(),
-                            QString::number(control, 16).toUpper().rightJustified(2,'0'),
-                            QString::number(on, 16).toUpper().rightJustified(2,'0'),
-                            QString::number(off, 16).toUpper().rightJustified(2,'0'));
-        }
+                        .arg(group, key,
+                                QString::number(min), QString::number(max),
+                                QString::number(status, 16).toUpper(),
+                                QString::number(control, 16).toUpper().rightJustified(2,'0'),
+                                QString::number(on, 16).toUpper().rightJustified(2,'0'),
+                                QString::number(off, 16).toUpper().rightJustified(2,'0')));
 
         MidiOutputHandler* moh = new MidiOutputHandler(this, mapping);
         if (!moh->validate()) {
@@ -114,7 +115,7 @@ void MidiController::createOutputHandlers() {
             qWarning() << errorLog;
 
             int deckNum = 0;
-            if (debugging()) {
+            if (ControllerDebug::enabled()) {
                 failures.append(errorLog);
             } else if (PlayerManager::isDeckGroup(group, &deckNum)) {
                 int numDecks = PlayerManager::numDecks();
@@ -160,45 +161,6 @@ void MidiController::destroyOutputHandlers() {
     }
 }
 
-QString formatMidiMessage(unsigned char status, unsigned char control, unsigned char value,
-                          unsigned char channel, unsigned char opCode) {
-    switch (opCode) {
-        case MIDI_PITCH_BEND:
-            return QString("MIDI status 0x%1: pitch bend ch %2, value 0x%3")
-                    .arg(QString::number(status, 16).toUpper(),
-                         QString::number(channel+1, 10),
-                         QString::number((value << 7) | control, 16).toUpper().rightJustified(4,'0'));
-        case MIDI_SONG_POS:
-            return QString("MIDI status 0x%1: song position 0x%2")
-                    .arg(QString::number(status, 16).toUpper(),
-                         QString::number((value << 7) | control, 16).toUpper().rightJustified(4,'0'));
-        case MIDI_PROGRAM_CH:
-        case MIDI_CH_AFTERTOUCH:
-            return QString("MIDI status 0x%1 (ch %2, opcode 0x%3), value 0x%4")
-                    .arg(QString::number(status, 16).toUpper(),
-                         QString::number(channel+1, 10),
-                         QString::number((status & 255)>>4, 16).toUpper(),
-                         QString::number(control, 16).toUpper().rightJustified(2,'0'));
-        case MIDI_SONG:
-            return QString("MIDI status 0x%1: select song #%2")
-                    .arg(QString::number(status, 16).toUpper(),
-                         QString::number(control+1, 10));
-        case MIDI_NOTE_OFF:
-        case MIDI_NOTE_ON:
-        case MIDI_AFTERTOUCH:
-        case MIDI_CC:
-            return QString("MIDI status 0x%1 (ch %2, opcode 0x%3), ctrl 0x%4, val 0x%5")
-                    .arg(QString::number(status, 16).toUpper(),
-                         QString::number(channel+1, 10),
-                         QString::number((status & 255)>>4, 16).toUpper(),
-                         QString::number(control, 16).toUpper().rightJustified(2,'0'),
-                         QString::number(value, 16).toUpper().rightJustified(2,'0'));
-        default:
-            return QString("MIDI status 0x%1")
-                    .arg(QString::number(status, 16).toUpper());
-    }
-}
-
 void MidiController::learnTemporaryInputMappings(const MidiInputMappings& mappings) {
     foreach (const MidiInputMapping& mapping, mappings) {
         m_temporaryInputMappings.insert(mapping.key.key, mapping);
@@ -237,16 +199,15 @@ void MidiController::commitTemporaryInputMappings() {
 }
 
 void MidiController::receive(unsigned char status, unsigned char control,
-                             unsigned char value) {
+                             unsigned char value, mixxx::Duration timestamp) {
     unsigned char channel = MidiUtils::channelFromStatus(status);
     unsigned char opCode = MidiUtils::opCodeFromStatus(status);
 
-    if (debugging()) {
-        qDebug() << formatMidiMessage(status, control, value, channel, opCode);
-    }
-
+    controllerDebug(MidiUtils::formatMidiMessage(getName(), status, control, value,
+                                                 channel, opCode, timestamp));
     MidiKey mappingKey(status, control);
 
+    triggerActivity();
     if (isLearning()) {
         emit(messageReceived(status, control, value));
 
@@ -254,7 +215,7 @@ void MidiController::receive(unsigned char status, unsigned char control,
                 m_temporaryInputMappings.find(mappingKey.key);
         if (it != m_temporaryInputMappings.end()) {
             for (; it != m_temporaryInputMappings.end() && it.key() == mappingKey.key; ++it) {
-                processInputMapping(it.value(), status, control, value);
+                processInputMapping(it.value(), status, control, value, timestamp);
             }
             return;
         }
@@ -263,14 +224,16 @@ void MidiController::receive(unsigned char status, unsigned char control,
     QHash<uint16_t, MidiInputMapping>::const_iterator it =
             m_preset.inputMappings.find(mappingKey.key);
     for (; it != m_preset.inputMappings.end() && it.key() == mappingKey.key; ++it) {
-        processInputMapping(it.value(), status, control, value);
+        processInputMapping(it.value(), status, control, value, timestamp);
     }
 }
 
 void MidiController::processInputMapping(const MidiInputMapping& mapping,
                                          unsigned char status,
                                          unsigned char control,
-                                         unsigned char value) {
+                                         unsigned char value,
+                                         mixxx::Duration timestamp) {
+    Q_UNUSED(timestamp);
     unsigned char channel = MidiUtils::channelFromStatus(status);
     unsigned char opCode = MidiUtils::opCodeFromStatus(status);
 
@@ -280,15 +243,12 @@ void MidiController::processInputMapping(const MidiInputMapping& mapping,
             return;
         }
 
-        QScriptValueList args;
-        args << QScriptValue(channel);
-        args << QScriptValue(control);
-        args << QScriptValue(value);
-        args << QScriptValue(status);
-        args << QScriptValue(mapping.control.group);
-        QScriptValue function = pEngine->resolveFunction(
-            mapping.control.item, true);
-        pEngine->execute(function, args);
+        QScriptValue function = pEngine->wrapFunctionCode(mapping.control.item, 5);
+        if (!pEngine->execute(function, channel, control, value, status,
+                              mapping.control.group, timestamp)) {
+            qDebug() << "MidiController: Invalid script function"
+                     << mapping.control.item;
+        }
         return;
     }
 
@@ -388,28 +348,29 @@ void MidiController::processInputMapping(const MidiInputMapping& mapping,
     if (mapping.options.soft_takeover) {
         // This is the only place to enable it if it isn't already.
         m_st.enable(pCO);
-        if (m_st.ignore(pCO, pCO->getParameterForMidiValue(newValue))) {
+        if (m_st.ignore(pCO, pCO->getParameterForMidi(newValue))) {
             return;
         }
     }
     pCO->setValueFromMidi(static_cast<MidiOpCode>(opCode), newValue);
 }
 
-double MidiController::computeValue(MidiOptions options, double _prevmidivalue, double _newmidivalue) {
+double MidiController::computeValue(
+        MidiOptions options, double prevmidivalue, double newmidivalue) {
     double tempval = 0.;
     double diff = 0.;
 
     if (options.all == 0) {
-        return _newmidivalue;
+        return newmidivalue;
     }
 
     if (options.invert) {
-        return 127. - _newmidivalue;
+        return 127. - newmidivalue;
     }
 
     if (options.rot64 || options.rot64_inv) {
-        tempval = _prevmidivalue;
-        diff = _newmidivalue - 64.;
+        tempval = prevmidivalue;
+        diff = newmidivalue - 64.;
         if (diff == -1 || diff == 1)
             diff /= 16;
         else
@@ -422,8 +383,8 @@ double MidiController::computeValue(MidiOptions options, double _prevmidivalue, 
     }
 
     if (options.rot64_fast) {
-        tempval = _prevmidivalue;
-        diff = _newmidivalue - 64.;
+        tempval = prevmidivalue;
+        diff = newmidivalue - 64.;
         diff *= 1.5;
         tempval += diff;
         return (tempval < 0. ? 0. : (tempval > 127. ? 127.0 : tempval));
@@ -431,19 +392,19 @@ double MidiController::computeValue(MidiOptions options, double _prevmidivalue, 
 
     if (options.diff) {
         //Interpret 7-bit signed value using two's compliment.
-        if (_newmidivalue >= 64.)
-            _newmidivalue = _newmidivalue - 128.;
+        if (newmidivalue >= 64.)
+            newmidivalue = newmidivalue - 128.;
         //Apply sensitivity to signed value. FIXME
        // if(sensitivity > 0)
         //    _newmidivalue = _newmidivalue * ((double)sensitivity / 50.);
         //Apply new value to current value.
-        _newmidivalue = _prevmidivalue + _newmidivalue;
+        newmidivalue = prevmidivalue + newmidivalue;
     }
 
     if (options.selectknob) {
         //Interpret 7-bit signed value using two's compliment.
-        if (_newmidivalue >= 64.)
-            _newmidivalue = _newmidivalue - 128.;
+        if (newmidivalue >= 64.)
+            newmidivalue = newmidivalue - 128.;
         //Apply sensitivity to signed value. FIXME
         //if(sensitivity > 0)
         //    _newmidivalue = _newmidivalue * ((double)sensitivity / 50.);
@@ -451,11 +412,11 @@ double MidiController::computeValue(MidiOptions options, double _prevmidivalue, 
     }
 
     if (options.button) {
-        _newmidivalue = _newmidivalue != 0;
+        newmidivalue = newmidivalue != 0;
     }
 
     if (options.sw) {
-        _newmidivalue = 1;
+        newmidivalue = 1;
     }
 
     if (options.spread64) {
@@ -464,51 +425,40 @@ double MidiController::computeValue(MidiOptions options, double _prevmidivalue, 
         // Uses a similar non-linear scaling formula as ControlTTRotary::getValueFromWidget()
         // but with added sensitivity adjustment. This formula is still experimental.
 
-        _newmidivalue = _newmidivalue - 64.;
+        newmidivalue = newmidivalue - 64.;
         //FIXME
         //double distance = _newmidivalue - 64.;
         // _newmidivalue = distance * distance * sensitivity / 50000.;
         //if (distance < 0.)
-        //    _newmidivalue = -_newmidivalue;
+        //    _newmidivalue = -newmidivalue;
 
-        //qDebug() << "Spread64: in " << distance << "  out " << _newmidivalue;
+        //qDebug() << "Spread64: in " << distance << "  out " << newmidivalue;
     }
 
     if (options.herc_jog) {
-        if (_newmidivalue > 64.) {
-            _newmidivalue -= 128.;
+        if (newmidivalue > 64.) {
+            newmidivalue -= 128.;
         }
-        _newmidivalue += _prevmidivalue;
-        //if (_prevmidivalue != 0.0) { qDebug() << "AAAAAAAAAAAA" << _prevmidivalue; }
+        newmidivalue += prevmidivalue;
+        //if (_prevmidivalue != 0.0) { qDebug() << "AAAAAAAAAAAA" << prevmidivalue; }
     }
 
     if (options.herc_jog_fast) {
-        if (_newmidivalue > 64.) {
-            _newmidivalue -= 128.;
+        if (newmidivalue > 64.) {
+            newmidivalue -= 128.;
         }
-        _newmidivalue = _prevmidivalue + (_newmidivalue * 3);
+        newmidivalue = prevmidivalue + (newmidivalue * 3);
     }
 
-    return _newmidivalue;
+    return newmidivalue;
 }
 
-QString formatSysexMessage(QString controllerName, const QByteArray& data) {
-    QString message = QString("%1: %2 bytes: [").arg(controllerName).arg(data.size());
-    for (int i = 0; i < data.size(); ++i) {
-        message += QString("%1%2").arg(
-            QString("%1").arg((unsigned char)(data.at(i)), 2, 16, QChar('0')).toUpper(),
-            QString("%1").arg((i < (data.size()-1)) ? ' ' : ']'));
-    }
-    return message;
-}
-
-void MidiController::receive(QByteArray data) {
-    if (debugging()) {
-        qDebug() << formatSysexMessage(getName(), data);
-    }
+void MidiController::receive(QByteArray data, mixxx::Duration timestamp) {
+    controllerDebug(MidiUtils::formatSysexMessage(getName(), data, timestamp));
 
     MidiKey mappingKey(data.at(0), 0xFF);
 
+    triggerActivity();
     // TODO(rryan): Need to review how MIDI learn works with sysex messages. I
     // don't think this actually does anything useful.
     if (isLearning()) {
@@ -519,7 +469,7 @@ void MidiController::receive(QByteArray data) {
                 m_temporaryInputMappings.find(mappingKey.key);
         if (it != m_temporaryInputMappings.end()) {
             for (; it != m_temporaryInputMappings.end() && it.key() == mappingKey.key; ++it) {
-                processInputMapping(it.value(), data);
+                processInputMapping(it.value(), data, timestamp);
             }
             return;
         }
@@ -528,31 +478,26 @@ void MidiController::receive(QByteArray data) {
     QHash<uint16_t, MidiInputMapping>::const_iterator it =
             m_preset.inputMappings.find(mappingKey.key);
     for (; it != m_preset.inputMappings.end() && it.key() == mappingKey.key; ++it) {
-        processInputMapping(it.value(), data);
+        processInputMapping(it.value(), data, timestamp);
     }
 }
 
 void MidiController::processInputMapping(const MidiInputMapping& mapping,
-                                         const QByteArray& data) {
+                                         const QByteArray& data,
+                                         mixxx::Duration timestamp) {
     // Custom script handler
     if (mapping.options.script) {
         ControllerEngine* pEngine = getEngine();
         if (pEngine == NULL) {
             return;
         }
-        QScriptValue function = pEngine->resolveFunction(mapping.control.item, true);
-        if (!pEngine->execute(function, data)) {
-            qDebug() << "MidiController: Invalid script function" << mapping.control.item;
+        QScriptValue function = pEngine->wrapFunctionCode(mapping.control.item, 2);
+        if (!pEngine->execute(function, data, timestamp)) {
+            qDebug() << "MidiController: Invalid script function"
+                     << mapping.control.item;
         }
         return;
     }
     qWarning() << "MidiController: No script function specified for"
-               << formatSysexMessage(getName(), data);
-}
-
-void MidiController::sendShortMsg(unsigned char status, unsigned char byte1,
-                                  unsigned char byte2) {
-    unsigned int word = (((unsigned int)byte2) << 16) |
-            (((unsigned int)byte1) << 8) | status;
-    sendWord(word);
+               << MidiUtils::formatSysexMessage(getName(), data, timestamp);
 }

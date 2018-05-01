@@ -8,7 +8,7 @@
 #include <QAction>
 
 #include "library/baseplaylistfeature.h"
-#include "configobject.h"
+#include "preferences/usersettings.h"
 
 class TrackCollection;
 class TreeItem;
@@ -16,7 +16,7 @@ class TreeItem;
 class SetlogFeature : public BasePlaylistFeature {
     Q_OBJECT
 public:
-    SetlogFeature(QObject* parent, ConfigObject<ConfigValue>* pConfig,
+    SetlogFeature(QObject* parent, UserSettingsPointer pConfig,
                   TrackCollection* pTrackCollection);
     virtual ~SetlogFeature();
 
@@ -24,7 +24,7 @@ public:
     QIcon getIcon();
 
     virtual void bindWidget(WLibrary* libraryWidget,
-                            MixxxKeyboard* keyboard);
+                            KeyboardEventFilter* keyboard);
 
   public slots:
     void onRightClick(const QPoint& globalPos);
@@ -49,6 +49,7 @@ public:
     QAction* m_pJoinWithPreviousAction;
     QAction* m_pGetNewPlaylist;
     int m_playlistId;
+    WLibrary* m_libraryWidget;
 };
 
 #endif // SETLOGFEATURE_H

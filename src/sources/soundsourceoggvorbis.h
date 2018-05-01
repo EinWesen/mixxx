@@ -2,34 +2,30 @@
 #define MIXXX_SOUNDSOURCEOGGVORBIS_H
 
 #include "sources/soundsourceprovider.h"
+#include "util/memory.h"
 
 #define OV_EXCLUDE_STATIC_CALLBACKS
 #include <vorbis/vorbisfile.h>
 
 class QFile;
 
-namespace Mixxx {
+namespace mixxx {
 
 class SoundSourceOggVorbis: public SoundSource {
-public:
-    explicit SoundSourceOggVorbis(QUrl url);
-    ~SoundSourceOggVorbis();
+  public:
+    explicit SoundSourceOggVorbis(const QUrl& url);
+    ~SoundSourceOggVorbis() override;
 
     void close() override;
 
-    SINT seekSampleFrame(SINT frameIndex) override;
+  protected:
+    ReadableSampleFrames readSampleFramesClamped(
+            WritableSampleFrames sampleFrames) override;
 
-    SINT readSampleFrames(SINT numberOfFrames,
-            CSAMPLE* sampleBuffer) override;
-    SINT readSampleFramesStereo(SINT numberOfFrames,
-            CSAMPLE* sampleBuffer, SINT sampleBufferSize) override;
-
-private:
-    Result tryOpen(const AudioSourceConfig& audioSrcCfg) override;
-
-    SINT readSampleFrames(SINT numberOfFrames,
-            CSAMPLE* sampleBuffer, SINT sampleBufferSize,
-            bool readStereoSamples);
+  private:
+    OpenResult tryOpen(
+            OpenMode mode,
+            const OpenParams& params) override;
 
     static size_t ReadCallback(void *ptr, size_t size, size_t nmemb,
             void *datasource);
@@ -38,23 +34,24 @@ private:
     static long TellCallback(void *datasource);
     static ov_callbacks s_callbacks;
 
+    std::unique_ptr<QFile> m_pFile;
+
     OggVorbis_File m_vf;
 
     SINT m_curFrameIndex;
-    QFile* m_pFile;
 };
 
 class SoundSourceProviderOggVorbis: public SoundSourceProvider {
-public:
+  public:
     QString getName() const override;
 
     QStringList getSupportedFileExtensions() const override;
 
     SoundSourcePointer newSoundSource(const QUrl& url) override {
-        return SoundSourcePointer(new SoundSourceOggVorbis(url));
+        return newSoundSourceFromUrl<SoundSourceOggVorbis>(url);
     }
 };
 
-} // namespace Mixxx
+} // namespace mixxx
 
 #endif // MIXXX_SOUNDSOURCEOGGVORBIS_H

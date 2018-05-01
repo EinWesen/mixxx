@@ -13,18 +13,20 @@
 #include <QList>
 
 #include "library/libraryfeature.h"
-#include "configobject.h"
-#include "treeitemmodel.h"
-#include "dlganalysis.h"
+#include "library/dlganalysis.h"
+#include "library/treeitemmodel.h"
+#include "preferences/usersettings.h"
+#include "util/db/dbconnectionpool.h"
 
-class AnalyserQueue;
+class Library;
 class TrackCollection;
+class AnalyzerQueue;
 
 class AnalysisFeature : public LibraryFeature {
     Q_OBJECT
   public:
-    AnalysisFeature(QObject* parent,
-                    ConfigObject<ConfigValue>* pConfig,
+    AnalysisFeature(Library* parent,
+                    UserSettingsPointer pConfig,
                     TrackCollection* pTrackCollection);
     virtual ~AnalysisFeature();
 
@@ -34,7 +36,7 @@ class AnalysisFeature : public LibraryFeature {
     bool dropAccept(QList<QUrl> urls, QObject* pSource);
     bool dragMoveAccept(QUrl url);
     void bindWidget(WLibrary* libraryWidget,
-                    MixxxKeyboard* keyboard);
+                    KeyboardEventFilter* keyboard);
 
     TreeItemModel* getChildModel();
     void refreshLibraryModels();
@@ -50,7 +52,7 @@ class AnalysisFeature : public LibraryFeature {
   private slots:
     void slotProgressUpdate(int num_left);
     void stopAnalysis();
-    void cleanupAnalyser();
+    void cleanupAnalyzer();
 
   private:
     // Sets the title of this feature to the default name, given by
@@ -62,9 +64,11 @@ class AnalysisFeature : public LibraryFeature {
     // tracks in the job
     void setTitleProgress(int trackNum, int totalNum);
 
-    ConfigObject<ConfigValue>* m_pConfig;
+    UserSettingsPointer m_pConfig;
+    Library* m_pLibrary;
+    mixxx::DbConnectionPoolPtr m_pDbConnectionPool;
     TrackCollection* m_pTrackCollection;
-    AnalyserQueue* m_pAnalyserQueue;
+    AnalyzerQueue* m_pAnalyzerQueue;
     // Used to temporarily enable BPM detection in the prefs before we analyse
     int m_iOldBpmEnabled;
     // The title returned by title()

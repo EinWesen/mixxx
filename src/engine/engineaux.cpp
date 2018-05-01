@@ -2,44 +2,38 @@
 // created 4/8/2011 by Bill Good (bkgood@gmail.com)
 // shameless stolen from enginemicrophone.cpp (from RJ)
 
-#include <QtDebug>
-
 #include "engine/engineaux.h"
 
-#include "configobject.h"
-#include "sampleutil.h"
+#include <QtDebug>
+
+#include "control/control.h"
+#include "preferences/usersettings.h"
+#include "control/controlaudiotaperpot.h"
 #include "effects/effectsmanager.h"
 #include "engine/effects/engineeffectsmanager.h"
-#include "controlaudiotaperpot.h"
+#include "util/sample.h"
 
 EngineAux::EngineAux(const ChannelHandleAndGroup& handle_group, EffectsManager* pEffectsManager)
-        : EngineChannel(handle_group, EngineChannel::CENTER),
-          m_pEngineEffectsManager(pEffectsManager ? pEffectsManager->getEngineEffectsManager() : NULL),
-          m_vuMeter(getGroup()),
-          m_pEnabled(new ControlObject(ConfigKey(getGroup(), "enabled"))),
+        : EngineChannel(handle_group, EngineChannel::CENTER, pEffectsManager),
+          m_pInputConfigured(new ControlObject(ConfigKey(getGroup(), "input_configured"))),
           m_pPregain(new ControlAudioTaperPot(ConfigKey(getGroup(), "pregain"), -12, 12, 0.5)),
-          m_sampleBuffer(NULL),
           m_wasActive(false) {
-    if (pEffectsManager != NULL) {
-        pEffectsManager->registerChannel(handle_group);
-    }
+    // Make input_configured read-only.
+    m_pInputConfigured->setReadOnly();
+    ControlDoublePrivate::insertAlias(ConfigKey(getGroup(), "enabled"),
+                                      ConfigKey(getGroup(), "input_configured"));
 
     // by default Aux is enabled on the master and disabled on PFL. User
     // can over-ride by setting the "pfl" or "master" controls.
     setMaster(true);
-
-    m_pSampleRate = new ControlObjectSlave("[Master]", "samplerate");
 }
 
 EngineAux::~EngineAux() {
-    qDebug() << "~EngineAux()";
-    delete m_pEnabled;
     delete m_pPregain;
-    delete m_pSampleRate;
 }
 
 bool EngineAux::isActive() {
-    bool enabled = m_pEnabled->get() > 0.0;
+    bool enabled = m_pInputConfigured->toBool();
     if (enabled && m_sampleBuffer) {
         m_wasActive = true;
     } else if (m_wasActive) {
@@ -56,7 +50,7 @@ void EngineAux::onInputConfigured(AudioInput input) {
         return;
     }
     m_sampleBuffer = NULL;
-    m_pEnabled->set(1.0);
+    m_pInputConfigured->forceSet(1.0);
 }
 
 void EngineAux::onInputUnconfigured(AudioInput input) {
@@ -66,7 +60,7 @@ void EngineAux::onInputUnconfigured(AudioInput input) {
         return;
     }
     m_sampleBuffer = NULL;
-    m_pEnabled->set(0.0);
+    m_pInputConfigured->forceSet(0.0);
 }
 
 void EngineAux::receiveBuffer(AudioInput input, const CSAMPLE* pBuffer,
@@ -78,23 +72,24 @@ void EngineAux::receiveBuffer(AudioInput input, const CSAMPLE* pBuffer,
 
 void EngineAux::process(CSAMPLE* pOut, const int iBufferSize) {
     const CSAMPLE* sampleBuffer = m_sampleBuffer; // save pointer on stack
-    double pregain =  m_pPregain->get();
+    double pregain = m_pPregain->get();
     if (sampleBuffer) {
         SampleUtil::copyWithGain(pOut, sampleBuffer, pregain, iBufferSize);
+        EngineEffectsManager* pEngineEffectsManager = m_pEffectsManager->getEngineEffectsManager();
+        if (pEngineEffectsManager != nullptr) {
+            pEngineEffectsManager->processPreFaderInPlace(
+                m_group.handle(), m_pEffectsManager->getMasterHandle(),
+                pOut, iBufferSize, m_pSampleRate->get());
+        }
         m_sampleBuffer = NULL;
     } else {
         SampleUtil::clear(pOut, iBufferSize);
     }
 
-    if (m_pEngineEffectsManager != NULL) {
-        GroupFeatureState features;
-        // This is out of date by a callback but some effects will want the RMS
-        // volume.
-        m_vuMeter.collectFeatures(&features);
-        // Process effects enabled for this channel
-        m_pEngineEffectsManager->process(getHandle(), pOut, iBufferSize,
-                                         m_pSampleRate->get(), features);
-    }
     // Update VU meter
     m_vuMeter.process(pOut, iBufferSize);
+}
+
+void EngineAux::collectFeatures(GroupFeatureState* pGroupFeatures) const {
+    m_vuMeter.collectFeatures(pGroupFeatures);
 }

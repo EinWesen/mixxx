@@ -7,7 +7,7 @@
 #include <QMap>
 #include <QSqlDatabase>
 
-#include "trackinfoobject.h"
+#include "track/track.h"
 #include "library/dao/dao.h"
 
 #define CUE_TABLE "cues"
@@ -16,26 +16,27 @@ class Cue;
 
 class CueDAO : public DAO {
   public:
-    CueDAO(QSqlDatabase& database);
-    virtual ~CueDAO();
-    void setDatabase(QSqlDatabase& database) { m_database = database; }
+    ~CueDAO() override {}
 
-    void initialize();
+    void initialize(const QSqlDatabase& database) override {
+        m_database = database;
+    }
+
     int cueCount();
     int numCuesForTrack(TrackId trackId);
-    QList<Cue*> getCuesForTrack(TrackId trackId) const;
+    QList<CuePointer> getCuesForTrack(TrackId trackId) const;
     bool deleteCuesForTrack(TrackId trackId);
     bool deleteCuesForTracks(const QList<TrackId>& trackIds);
     bool saveCue(Cue* cue);
     bool deleteCue(Cue* cue);
     // TODO(XXX) once we refer to all tracks by their id and TIO has a getId()
     // method the first parameter here won't be necessary.
-    void saveTrackCues(TrackId trackId, TrackInfoObject*);
+    void saveTrackCues(TrackId trackId, const QList<CuePointer>& cueList);
   private:
-    Cue* cueFromRow(const QSqlQuery& query) const;
+    CuePointer cueFromRow(const QSqlQuery& query) const;
 
-    QSqlDatabase& m_database;
-    mutable QMap<int, Cue*> m_cues;
+    QSqlDatabase m_database;
+    mutable QMap<int, CuePointer> m_cues;
 };
 
 #endif /* CUEDAO_H */

@@ -1,6 +1,5 @@
 #include <QtAlgorithms>
 #include <QtDebug>
-#include <QTime>
 
 #include "library/banshee/bansheeplaylistmodel.h"
 #include "library/banshee/bansheedbconnection.h"
@@ -9,7 +8,7 @@
 #include "library/previewbuttondelegate.h"
 #include "track/beatfactory.h"
 #include "track/beats.h"
-#include "playermanager.h"
+#include "mixer/playermanager.h"
 
 #define BANSHEE_TABLE "banshee"
 #define CLM_VIEW_ORDER "position"
@@ -34,7 +33,6 @@
 
 BansheePlaylistModel::BansheePlaylistModel(QObject* pParent, TrackCollection* pTrackCollection, BansheeDbConnection* pConnection)
         : BaseSqlTableModel(pParent, pTrackCollection, "mixxx.db.model.banshee_playlist"),
-          m_pTrackCollection(pTrackCollection),
           m_pConnection(pConnection),
           m_playlistId(-1) {
 }
@@ -52,7 +50,7 @@ void BansheePlaylistModel::setTableModel(int playlistId) {
     if (m_playlistId >= 0) {
         // Clear old playlist
         m_playlistId = -1;
-        QSqlQuery query(m_pTrackCollection->getDatabase());
+        QSqlQuery query(m_pTrackCollection->database());
         QString strQuery("DELETE FROM " BANSHEE_TABLE);
         if (!query.exec(strQuery)) {
             LOG_FAILED_QUERY(query);
@@ -63,7 +61,7 @@ void BansheePlaylistModel::setTableModel(int playlistId) {
         // setup new playlist
         m_playlistId = playlistId;
 
-        QSqlQuery query(m_pTrackCollection->getDatabase());
+        QSqlQuery query(m_pTrackCollection->database());
         QString strQuery("CREATE TEMP TABLE IF NOT EXISTS " BANSHEE_TABLE
             " (" CLM_VIEW_ORDER " INTEGER, "
                  CLM_ARTIST " TEXT, "
@@ -306,7 +304,7 @@ TrackPointer BansheePlaylistModel::getTrack(const QModelIndex& index) const {
     if (pTrack && !track_already_in_library) {
         pTrack->setArtist(getFieldString(index, CLM_ARTIST));
         pTrack->setTitle(getFieldString(index, CLM_TITLE));
-        pTrack->setDuration(getFieldString(index, CLM_DURATION).toInt());
+        pTrack->setDuration(getFieldString(index, CLM_DURATION).toDouble());
         pTrack->setAlbum(getFieldString(index, CLM_ALBUM));
         pTrack->setAlbumArtist(getFieldString(index, CLM_ALBUM_ARTIST));
         pTrack->setYear(getFieldString(index, CLM_YEAR));
@@ -315,13 +313,13 @@ TrackPointer BansheePlaylistModel::getTrack(const QModelIndex& index) const {
         pTrack->setRating(getFieldString(index, CLM_RATING).toInt());
         pTrack->setTrackNumber(getFieldString(index, CLM_TRACKNUMBER));
         double bpm = getFieldString(index, CLM_BPM).toDouble();
-        pTrack->setBpm(bpm);
+        bpm = pTrack->setBpm(bpm);
         pTrack->setBitrate(getFieldString(index, CLM_BITRATE).toInt());
         pTrack->setComment(getFieldString(index, CLM_COMMENT));
         pTrack->setComposer(getFieldString(index, CLM_COMPOSER));
         // If the track has a BPM, then give it a static beatgrid.
         if (bpm > 0) {
-            BeatsPointer pBeats = BeatFactory::makeBeatGrid(pTrack.data(), bpm, 0.0);
+            BeatsPointer pBeats = BeatFactory::makeBeatGrid(*pTrack, bpm, 0.0);
             pTrack->setBeats(pBeats);
         }
 

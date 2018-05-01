@@ -14,10 +14,10 @@
 #include "library/libraryfeature.h"
 #include "library/dao/playlistdao.h"
 #include "library/dao/trackdao.h"
-#include "trackinfoobject.h"
+#include "track/track.h"
 
 class WLibrary;
-class MixxxKeyboard;
+class KeyboardEventFilter;
 class PlaylistTableModel;
 class TrackCollection;
 class TreeItem;
@@ -26,7 +26,7 @@ class BasePlaylistFeature : public LibraryFeature {
     Q_OBJECT
   public:
     BasePlaylistFeature(QObject* parent,
-                        ConfigObject<ConfigValue>* pConfig,
+                        UserSettingsPointer pConfig,
                         TrackCollection* pTrackCollection,
                         QString rootViewName);
     virtual ~BasePlaylistFeature();
@@ -34,7 +34,7 @@ class BasePlaylistFeature : public LibraryFeature {
     TreeItemModel* getChildModel();
 
     void bindWidget(WLibrary* libraryWidget,
-                    MixxxKeyboard* keyboard);
+                    KeyboardEventFilter* keyboard);
 
   signals:
     void showPage(const QUrl& page);
@@ -59,7 +59,11 @@ class BasePlaylistFeature : public LibraryFeature {
     void slotRenamePlaylist();
     void slotTogglePlaylistLock();
     void slotImportPlaylist();
+    void slotImportPlaylistFile(const QString &playlist_file);
+    void slotCreateImportPlaylist();
     void slotExportPlaylist();
+    // Copy all of the tracks in a playlist to a new directory.
+    void slotExportTrackFiles();
     void slotAnalyzePlaylist();
 
   protected:
@@ -75,7 +79,6 @@ class BasePlaylistFeature : public LibraryFeature {
     // on failure.
     QModelIndex indexFromPlaylistId(int playlistId);
 
-    ConfigObject<ConfigValue>* m_pConfig;
     TrackCollection* m_pTrackCollection;
     PlaylistDAO &m_playlistDao;
     TrackDAO &m_trackDao;
@@ -87,7 +90,9 @@ class BasePlaylistFeature : public LibraryFeature {
     QAction *m_pRenamePlaylistAction;
     QAction *m_pLockPlaylistAction;
     QAction *m_pImportPlaylistAction;
+    QAction *m_pCreateImportPlaylistAction;
     QAction *m_pExportPlaylistAction;
+    QAction *m_pExportTrackFilesAction;
     QAction *m_pDuplicatePlaylistAction;
     QAction *m_pAnalyzePlaylistAction;
     QList<QPair<int, QString> > m_playlistList;

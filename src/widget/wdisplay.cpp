@@ -28,7 +28,7 @@
 WDisplay::WDisplay(QWidget * parent)
         : WWidget(parent),
           m_iCurrentPixmap(0),
-          m_pPixmapBack(NULL),
+          m_pPixmapBack(nullptr),
           m_bDisabledLoaded(false) {
     setPositions(0);
 }
@@ -37,12 +37,14 @@ WDisplay::~WDisplay() {
     resetPositions();
 }
 
-void WDisplay::setup(QDomNode node, const SkinContext& context) {
+void WDisplay::setup(const QDomNode& node, const SkinContext& context) {
     // Set background pixmap if available
-    if (context.hasNode(node, "BackPath")) {
-        QDomElement backPathNode = context.selectElement(node, "BackPath");
+
+    QDomElement backPathNode = context.selectElement(node, "BackPath");
+    if (!backPathNode.isNull()) {
         setPixmapBackground(context.getPixmapSource(backPathNode),
-                            context.selectScaleMode(backPathNode, Paintable::TILE));
+                            context.selectScaleMode(backPathNode, Paintable::TILE),
+                            context.getScaleFactor());
     }
 
     // Number of states
@@ -56,12 +58,13 @@ void WDisplay::setup(QDomNode node, const SkinContext& context) {
     Paintable::DrawMode pathMode =
             context.selectScaleMode(pathNode, Paintable::FIXED);
     for (int i = 0; i < m_pixmaps.size(); ++i) {
-        setPixmap(&m_pixmaps, i, context.getSkinPath(path.arg(i)), pathMode);
+        setPixmap(&m_pixmaps, i, context.makeSkinPath(path.arg(i)),
+                  pathMode, context.getScaleFactor());
     }
 
     // See if disabled images is defined, and load them...
-    if (context.hasNode(node, "DisabledPath")) {
-        QDomElement disabledNode = context.selectElement(node, "DisabledPath");
+    QDomElement disabledNode = context.selectElement(node, "DisabledPath");
+    if (!disabledNode.isNull()) {
         QString disabledPath = context.nodeToString(disabledNode);
         // The implicit default in <1.12.0 was FIXED so we keep it for
         // backwards compatibility.
@@ -69,7 +72,8 @@ void WDisplay::setup(QDomNode node, const SkinContext& context) {
             context.selectScaleMode(disabledNode, Paintable::FIXED);
         for (int i = 0; i < m_disabledPixmaps.size(); ++i) {
             setPixmap(&m_disabledPixmaps, i,
-                      context.getSkinPath(disabledPath.arg(i)), disabledMode);
+                      context.makeSkinPath(disabledPath.arg(i)),
+                      disabledMode, context.getScaleFactor());
         }
         m_bDisabledLoaded = true;
     }
@@ -95,22 +99,27 @@ void WDisplay::resetPositions() {
 }
 
 void WDisplay::setPixmapBackground(PixmapSource source,
-                                   Paintable::DrawMode mode) {
-    m_pPixmapBack = WPixmapStore::getPaintable(source, mode);
+                                   Paintable::DrawMode mode,
+                                   double scaleFactor) {
+    m_pPixmapBack = WPixmapStore::getPaintable(source, mode, scaleFactor);
     if (m_pPixmapBack.isNull() || m_pPixmapBack->isNull()) {
         qDebug() << metaObject()->className()
                  << "Error loading background pixmap:" << source.getPath();
     }
 }
 
-void WDisplay::setPixmap(QVector<PaintablePointer>* pPixmaps, int iPos,
-                         const QString& filename, Paintable::DrawMode mode) {
+void WDisplay::setPixmap(
+        QVector<PaintablePointer>* pPixmaps,
+        int iPos,
+        const QString& filename,
+        Paintable::DrawMode mode,
+        double scaleFactor) {
     if (iPos < 0 || iPos >= pPixmaps->size()) {
         return;
     }
 
     PixmapSource source(filename);
-    PaintablePointer pPixmap = WPixmapStore::getPaintable(source, mode);
+    PaintablePointer pPixmap = WPixmapStore::getPaintable(source, mode, scaleFactor);
     if (pPixmap.isNull() || pPixmap->isNull()) {
         qDebug() << metaObject()->className()
                  << "Error loading pixmap:" << filename;
@@ -171,7 +180,7 @@ void WDisplay::onConnectedControlChanged(double dParameter, double dValue) {
     }
 }
 
-void WDisplay::paintEvent(QPaintEvent*) {
+void WDisplay::paintEvent(QPaintEvent* /*unused*/) {
     QStyleOption option;
     option.initFrom(this);
     QStylePainter p(this);

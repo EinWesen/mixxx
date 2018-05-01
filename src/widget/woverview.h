@@ -18,7 +18,7 @@
 #include <QColor>
 #include <QList>
 
-#include "trackinfoobject.h"
+#include "track/track.h"
 #include "widget/wwidget.h"
 
 #include "waveform/renderers/waveformsignalcolors.h"
@@ -33,34 +33,40 @@ class Waveform;
 class WOverview : public WWidget {
     Q_OBJECT
   public:
-    WOverview(const char* pGroup, ConfigObject<ConfigValue>* pConfig, QWidget* parent=NULL);
-    virtual ~WOverview();
+    WOverview(const char* pGroup, UserSettingsPointer pConfig, QWidget* parent=nullptr);
 
-    void setup(QDomNode node, const SkinContext& context);
+    void setup(const QDomNode& node, const SkinContext& context);
 
   public slots:
-    void onConnectedControlChanged(double dParameter, double dValue);
-    void slotLoadNewTrack(TrackPointer pTrack);
+    void onConnectedControlChanged(double dParameter, double dValue) override;
     void slotTrackLoaded(TrackPointer pTrack);
-    void slotUnloadTrack(TrackPointer pTrack);
+    void slotLoadingTrack(TrackPointer pNewTrack, TrackPointer pOldTrack);
 
   signals:
     void trackDropped(QString filename, QString group);
 
   protected:
-    void mouseMoveEvent(QMouseEvent *e);
-    void mouseReleaseEvent(QMouseEvent *e);
-    void mousePressEvent(QMouseEvent *e);
-    void paintEvent(QPaintEvent *);
-    void resizeEvent(QResizeEvent *);
-    virtual void dragEnterEvent(QDragEnterEvent* event);
-    virtual void dropEvent(QDropEvent* event);
+    void mouseMoveEvent(QMouseEvent *e) override;
+    void mouseReleaseEvent(QMouseEvent *e) override;
+    void mousePressEvent(QMouseEvent *e) override;
+    void paintEvent(QPaintEvent * /*unused*/) override;
+    void resizeEvent(QResizeEvent * /*unused*/) override;
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
+
+    inline int length() {
+        return m_orientation == Qt::Horizontal ? width() : height();
+    }
+
+    inline int breadth() {
+        return m_orientation == Qt::Horizontal ? height() : width();
+    }
 
     ConstWaveformPointer getWaveform() const {
         return m_pWaveform;
     }
 
-    QImage* m_pWaveformSourceImage;
+    QImage m_waveformSourceImage;
     QImage m_waveformImageScaled;
 
     WaveformSignalColors m_signalColors;
@@ -80,7 +86,7 @@ class WOverview : public WWidget {
     void onMarkRangeChange(double v);
 
     void slotWaveformSummaryUpdated();
-    void slotAnalyserProgress(int progress);
+    void slotAnalyzerProgress(int progress);
 
   private:
     // Append the waveform overview pixmap according to available data in waveform
@@ -94,11 +100,11 @@ class WOverview : public WWidget {
     }
 
     const QString m_group;
-    ConfigObject<ConfigValue>* m_pConfig;
-    ControlObjectSlave* m_endOfTrackControl;
-    double m_endOfTrack;
-    ControlObjectSlave* m_trackSamplesControl;
-    ControlObjectSlave* m_playControl;
+    UserSettingsPointer m_pConfig;
+    ControlProxy* m_endOfTrackControl;
+    bool m_endOfTrack;
+    ControlProxy* m_trackSamplesControl;
+    ControlProxy* m_playControl;
 
     // Current active track
     TrackPointer m_pCurrentTrack;
@@ -108,6 +114,8 @@ class WOverview : public WWidget {
     bool m_bDrag;
     // Internal storage of slider position in pixels
     int m_iPos;
+
+    Qt::Orientation m_orientation;
 
     QPixmap m_backgroundPixmap;
     QString m_backgroundPixmapPath;
@@ -121,9 +129,10 @@ class WOverview : public WWidget {
     double m_a;
     double m_b;
 
-    double m_dAnalyserProgress;
-    bool m_bAnalyserFinalizing;
+    double m_dAnalyzerProgress;
+    bool m_bAnalyzerFinalizing;
     bool m_trackLoaded;
+    double m_scaleFactor;
 };
 
 #endif

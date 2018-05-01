@@ -19,14 +19,15 @@
 #include <QTouchEvent>
 
 #include "widget/wwidget.h"
-#include "controlobjectslave.h"
+#include "control/controlproxy.h"
 #include "util/assert.h"
 
 WWidget::WWidget(QWidget* parent, Qt::WindowFlags flags)
         : QWidget(parent, flags),
           WBaseWidget(this),
-          m_activeTouchButton(Qt::NoButton) {
-    m_pTouchShift = new ControlObjectSlave("[Controls]", "touch_shift");
+          m_activeTouchButton(Qt::NoButton),
+          m_scaleFactor(1.0) {
+    m_pTouchShift = new ControlProxy("[Controls]", "touch_shift");
     setAttribute(Qt::WA_StaticContents);
     setAttribute(Qt::WA_AcceptTouchEvents);
     setFocusPolicy(Qt::ClickFocus);
@@ -43,14 +44,24 @@ bool WWidget::touchIsRightButton() {
 bool WWidget::event(QEvent* e) {
     if (e->type() == QEvent::ToolTip) {
         updateTooltip();
+    } if (e->type() == QEvent::FontChange) {
+        const QFont& fonti = font();
+        // Change the new font on the fly by casting away its constancy
+        // using setFont() here, would results into a recursive loop
+        // resetting the font to the original css values.
+        // Only scale pixel size fonts, point size fonts are scaled by the OS
+        if (fonti.pixelSize() > 0) {
+            const_cast<QFont&>(fonti).setPixelSize(fonti.pixelSize() * m_scaleFactor);
+        }
     } else if (isEnabled()) {
         switch(e->type()) {
         case QEvent::TouchBegin:
         case QEvent::TouchUpdate:
         case QEvent::TouchEnd:
         {
-            QTouchEvent* touchEvent = static_cast<QTouchEvent*>(e);
-            if (touchEvent->deviceType() !=  QTouchEvent::TouchScreen) {
+            QTouchEvent* touchEvent = dynamic_cast<QTouchEvent*>(e);
+            if (touchEvent == nullptr ||
+                    touchEvent->deviceType() !=  QTouchEvent::TouchScreen) {
                 break;
             }
 

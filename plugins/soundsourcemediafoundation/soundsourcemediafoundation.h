@@ -1,71 +1,90 @@
-/**
- * \file soundsourcemediafoundation.h
- * \class SoundSourceMediaFoundation
- * \brief Decodes MPEG4/AAC audio using the SourceReader interface of the
- * Media Foundation framework included in Windows 7.
- * \author Bill Good <bkgood at gmail dot com>
- * \author Albert Santoni <alberts at mixxx dot org>
- * \date Jan 10, 2011
- */
+#ifndef MIXXX_SOUNDSOURCEMEDIAFOUNDATION_H
+#define MIXXX_SOUNDSOURCEMEDIAFOUNDATION_H
 
-/***************************************************************************
- *                                                                         *
- *   This program is free software; you can redistribute it and/or modify  *
- *   it under the terms of the GNU General Public License as published by  *
- *   the Free Software Foundation; either version 2 of the License, or     *
- *   (at your option) any later version.                                   *
- *                                                                         *
- ***************************************************************************/
 
-#ifndef SOUNDSOURCEMEDIAFOUNDATION_H
-#define SOUNDSOURCEMEDIAFOUNDATION_H
+#include <mfidl.h>
+#include <mfreadwrite.h>
 
 #include "sources/soundsourceplugin.h"
+#include "util/readaheadsamplebuffer.h"
 
-#include <windows.h>
 
-class IMFSourceReader;
-class IMFMediaType;
-class IMFMediaSource;
+namespace mixxx {
 
-namespace Mixxx {
+class StreamUnitConverter final {
+    const static SINT kStreamUnitsPerSecond = 1000 * 1000 * 10; // frame length = 100 ns
 
-class SoundSourceMediaFoundation : public Mixxx::SoundSourcePlugin {
-public:
-    explicit SoundSourceMediaFoundation(QUrl url);
-    ~SoundSourceMediaFoundation();
+  public:
+    StreamUnitConverter()
+        : m_pAudioSource(nullptr),
+          m_streamUnitsPerFrame(0.0),
+          m_toFrameIndexBias(0) {
+    }
+    explicit StreamUnitConverter(const AudioSource* pAudioSource)
+        : m_pAudioSource(pAudioSource),
+          m_streamUnitsPerFrame(double(kStreamUnitsPerSecond) / double(pAudioSource->sampleRate())),
+          m_toFrameIndexBias(kStreamUnitsPerSecond / pAudioSource->sampleRate() / 2) {
+        // The stream units should actually be much shorter
+        // than the frames to minimize jitter. Even a frame
+        // at 192 kHz has a length of about 5000 ns >> 100 ns.
+        DEBUG_ASSERT(m_streamUnitsPerFrame >= 50);
+        DEBUG_ASSERT(m_toFrameIndexBias > 0);
+    }
+
+    LONGLONG fromFrameIndex(SINT frameIndex) const {
+        // Used for seeking, so we need to round down to hit the
+        // corresponding stream unit where the given stream unit
+        // starts
+        return floor((frameIndex - m_pAudioSource->frameIndexMin()) * m_streamUnitsPerFrame);
+    }
+
+    SINT toFrameIndex(LONGLONG streamPos) const {
+        // NOTE(uklotzde): Add m_toFrameIndexBias to account for rounding errors
+        return m_pAudioSource->frameIndexMin() +
+                static_cast<SINT>(floor((streamPos + m_toFrameIndexBias) / m_streamUnitsPerFrame));
+    }
+
+  private:
+    const AudioSource* m_pAudioSource;
+    double m_streamUnitsPerFrame;
+    SINT m_toFrameIndexBias;
+};
+
+class SoundSourceMediaFoundation: public mixxx::SoundSourcePlugin {
+  public:
+    explicit SoundSourceMediaFoundation(const QUrl& url);
+    ~SoundSourceMediaFoundation() override;
 
     void close() override;
 
-    SINT seekSampleFrame(SINT frameIndex) override;
+  protected:
+    ReadableSampleFrames readSampleFramesClamped(
+            WritableSampleFrames sampleFrames) override;
 
-    SINT readSampleFrames(SINT numberOfFrames, CSAMPLE* sampleBuffer) override;
+  private:
+    OpenResult tryOpen(
+            OpenMode mode,
+            const mixxx::AudioSource::OpenParams& params) override;
 
-private:
-    Result tryOpen(const Mixxx::AudioSourceConfig& audioSrcCfg) override;
-
-    bool configureAudioStream(const Mixxx::AudioSourceConfig& audioSrcCfg);
+    bool configureAudioStream(const mixxx::AudioSource::OpenParams& params);
     bool readProperties();
 
-    void copyFrames(CSAMPLE *dest, SINT *destFrames, const CSAMPLE *src,
-            SINT srcFrames);
+    void seekSampleFrame(SINT frameIndex);
 
     HRESULT m_hrCoInitialize;
     HRESULT m_hrMFStartup;
-    IMFSourceReader *m_pReader;
-    SINT m_nextFrame;
-    CSAMPLE *m_leftoverBuffer;
-    SINT m_leftoverBufferSize;
-    SINT m_leftoverBufferLength;
-    SINT m_leftoverBufferPosition;
-    qint64 m_mfDuration;
-    SINT m_iCurrentPosition;
-    bool m_dead;
-    bool m_seeking;
+
+    IMFSourceReader* m_pSourceReader;
+
+    StreamUnitConverter m_streamUnitConverter;
+
+    SINT m_currentFrameIndex;
+
+    ReadAheadSampleBuffer m_sampleBuffer;
 };
 
 class SoundSourceProviderMediaFoundation: public SoundSourceProvider {
-public:
+  public:
     QString getName() const override;
 
     QStringList getSupportedFileExtensions() const override;
@@ -73,12 +92,14 @@ public:
     SoundSourcePointer newSoundSource(const QUrl& url) override;
 };
 
-} // namespace Mixxx
+} // namespace mixxx
+
 
 extern "C" MIXXX_SOUNDSOURCEPLUGINAPI_EXPORT
-Mixxx::SoundSourceProvider* Mixxx_SoundSourcePluginAPI_createSoundSourceProvider();
+mixxx::SoundSourceProvider* Mixxx_SoundSourcePluginAPI_createSoundSourceProvider();
 
 extern "C" MIXXX_SOUNDSOURCEPLUGINAPI_EXPORT
-void Mixxx_SoundSourcePluginAPI_destroySoundSourceProvider(Mixxx::SoundSourceProvider*);
+void Mixxx_SoundSourcePluginAPI_destroySoundSourceProvider(mixxx::SoundSourceProvider*);
 
-#endif // SOUNDSOURCEMEDIAFOUNDATION_H
+
+#endif // MIXXX_SOUNDSOURCEMEDIAFOUNDATION_H

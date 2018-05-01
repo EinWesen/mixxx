@@ -10,7 +10,7 @@ class ControlParameterWidgetConnection;
 
 class WBaseWidget {
   public:
-    WBaseWidget(QWidget* pWidget);
+    explicit WBaseWidget(QWidget* pWidget);
     virtual ~WBaseWidget();
 
     virtual void Init();
@@ -53,6 +53,14 @@ class WBaseWidget {
     double getControlParameterLeft() const;
     double getControlParameterRight() const;
     double getControlParameterDisplay() const;
+
+    inline const QList<ControlParameterWidgetConnection*>& connections() const {
+        return m_connections;
+    };
+    inline const QList<ControlParameterWidgetConnection*>& leftConnections() const {
+        return m_leftConnections;
+    };
+
 
   protected:
     // Whenever a connected control is changed, onConnectedControlChanged is

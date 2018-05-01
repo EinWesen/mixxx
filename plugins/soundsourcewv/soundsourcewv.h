@@ -7,22 +7,23 @@
 
 class QFile;
 
-namespace Mixxx {
+namespace mixxx {
 
 class SoundSourceWV: public SoundSourcePlugin {
   public:
     explicit SoundSourceWV(const QUrl& url);
-    ~SoundSourceWV();
+    ~SoundSourceWV() override;
 
     void close() override;
 
-    SINT seekSampleFrame(SINT frameIndex) override;
-
-    SINT readSampleFrames(SINT numberOfFrames,
-            CSAMPLE* sampleBuffer) override;
+  protected:
+    ReadableSampleFrames readSampleFramesClamped(
+            WritableSampleFrames sampleFrames) override;
 
   private:
-    Result tryOpen(const AudioSourceConfig& audioSrcCfg) override;
+    OpenResult tryOpen(
+            OpenMode mode,
+            const OpenParams& params) override;
 
     static int32_t ReadBytesCallback(void* id, void* data, int bcount);
     static uint32_t GetPosCallback(void* id);
@@ -38,6 +39,8 @@ class SoundSourceWV: public SoundSourcePlugin {
     CSAMPLE m_sampleScaleFactor;
     QFile* m_pWVFile;
     QFile* m_pWVCFile;
+
+    SINT m_curFrameIndex;
 };
 
 class SoundSourceProviderWV: public SoundSourceProvider {
@@ -49,12 +52,12 @@ public:
     SoundSourcePointer newSoundSource(const QUrl& url) override;
 };
 
-}  // namespace Mixxx
+}  // namespace mixxx
 
 extern "C" MIXXX_SOUNDSOURCEPLUGINAPI_EXPORT
-Mixxx::SoundSourceProvider* Mixxx_SoundSourcePluginAPI_createSoundSourceProvider();
+mixxx::SoundSourceProvider* Mixxx_SoundSourcePluginAPI_createSoundSourceProvider();
 
 extern "C" MIXXX_SOUNDSOURCEPLUGINAPI_EXPORT
-void Mixxx_SoundSourcePluginAPI_destroySoundSourceProvider(Mixxx::SoundSourceProvider*);
+void Mixxx_SoundSourcePluginAPI_destroySoundSourceProvider(mixxx::SoundSourceProvider*);
 
 #endif // MIXXX_SOUNDSOURCEWV_H

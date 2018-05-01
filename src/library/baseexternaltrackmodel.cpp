@@ -1,7 +1,8 @@
 #include "library/baseexternaltrackmodel.h"
+#include "library/dao/trackschema.h"
 #include "library/trackcollection.h"
 #include "library/queryutil.h"
-#include "playermanager.h"
+#include "mixer/playermanager.h"
 
 BaseExternalTrackModel::BaseExternalTrackModel(QObject* parent,
                                                TrackCollection* pTrackCollection,

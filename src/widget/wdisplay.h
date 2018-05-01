@@ -30,25 +30,32 @@
 class WDisplay : public WWidget {
    Q_OBJECT
   public:
-    WDisplay(QWidget *parent=NULL);
-    virtual ~WDisplay();
+    explicit WDisplay(QWidget *parent=nullptr);
+    ~WDisplay() override;
 
-    void setup(QDomNode node, const SkinContext& context);
+    void setup(const QDomNode& node, const SkinContext& context);
 
-    void onConnectedControlChanged(double dParameter, double dValue);
+    void onConnectedControlChanged(double dParameter, double dValue) override;
 
   protected:
-    void paintEvent(QPaintEvent*);
+    void paintEvent(QPaintEvent* /*unused*/) override;
 
     int numPixmaps() const {
         return m_pixmaps.size();
     }
 
   private:
-    void setPixmap(QVector<PaintablePointer>* pPixmaps, int iPos,
-                   const QString& filename, Paintable::DrawMode mode);
+    void setPixmap(
+            QVector<PaintablePointer>* pPixmaps,
+            int iPos,
+            const QString& filename,
+            Paintable::DrawMode mode,
+            double scaleFactor);
 
-    void setPixmapBackground(PixmapSource source, Paintable::DrawMode mode);
+    void setPixmapBackground(
+            PixmapSource source,
+            Paintable::DrawMode mode,
+            double scaleFactor);
 
     void setPositions(int iNoPos);
 

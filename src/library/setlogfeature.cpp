@@ -4,21 +4,30 @@
 
 #include "library/setlogfeature.h"
 
-#include "controlobject.h"
+#include "control/controlobject.h"
 #include "library/playlisttablemodel.h"
 #include "library/trackcollection.h"
 #include "library/treeitem.h"
-#include "playerinfo.h"
-#include "playermanager.h"
+#include "mixer/playerinfo.h"
+#include "mixer/playermanager.h"
+#include "widget/wtracktableview.h"
+#include "widget/wlibrary.h"
 
 SetlogFeature::SetlogFeature(QObject* parent,
-                             ConfigObject<ConfigValue>* pConfig,
+                             UserSettingsPointer pConfig,
                              TrackCollection* pTrackCollection)
         : BasePlaylistFeature(parent, pConfig, pTrackCollection, "SETLOGHOME"),
-          m_playlistId(-1) {
+          m_playlistId(-1),
+          m_libraryWidget(nullptr) {
     m_pPlaylistTableModel = new PlaylistTableModel(this, pTrackCollection,
                                                    "mixxx.db.model.setlog",
                                                    true); //show all tracks
+
+    //construct child model
+    auto pRootItem = std::make_unique<TreeItem>(this);
+    m_childModel.setRootItem(std::move(pRootItem));
+    constructChildModel(-1);
+
     m_pJoinWithPreviousAction = new QAction(tr("Join with previous"), this);
     connect(m_pJoinWithPreviousAction, SIGNAL(triggered()),
             this, SLOT(slotJoinWithPrevious()));
@@ -26,13 +35,8 @@ SetlogFeature::SetlogFeature(QObject* parent,
     m_pGetNewPlaylist = new QAction(tr("Create new history playlist"), this);
     connect(m_pGetNewPlaylist, SIGNAL(triggered()), this, SLOT(slotGetNewPlaylist()));
 
-    // initialised in a new generic slot(get new history playlist purpose)
+    // initialized in a new generic slot(get new history playlist purpose)
     emit(slotGetNewPlaylist());
-
-    //construct child model
-    TreeItem *rootItem = new TreeItem();
-    m_childModel.setRootItem(rootItem);
-    constructChildModel(-1);
 }
 
 SetlogFeature::~SetlogFeature() {
@@ -54,11 +58,13 @@ QIcon SetlogFeature::getIcon() {
 }
 
 void SetlogFeature::bindWidget(WLibrary* libraryWidget,
-                               MixxxKeyboard* keyboard) {
+                               KeyboardEventFilter* keyboard) {
     BasePlaylistFeature::bindWidget(libraryWidget,
                                     keyboard);
     connect(&PlayerInfo::instance(), SIGNAL(currentPlayingTrackChanged(TrackPointer)),
             this, SLOT(slotPlayingTrackChanged(TrackPointer)));
+    m_libraryWidget = libraryWidget;
+
 }
 
 void SetlogFeature::onRightClick(const QPoint& globalPos) {
@@ -116,7 +122,7 @@ void SetlogFeature::onRightClickChild(const QPoint& globalPos, QModelIndex index
 void SetlogFeature::buildPlaylistList() {
     m_playlistList.clear();
     // Setup the sidebar playlist model
-    QSqlTableModel playlistTableModel(this, m_pTrackCollection->getDatabase());
+    QSqlTableModel playlistTableModel(this, m_pTrackCollection->database());
     playlistTableModel.setTable("Playlists");
     playlistTableModel.setFilter("hidden=2"); // PLHT_SET_LOG
     playlistTableModel.setSort(playlistTableModel.fieldIndex("id"),
@@ -149,7 +155,7 @@ void SetlogFeature::decorateChild(TreeItem* item, int playlist_id) {
 }
 
 void SetlogFeature::slotGetNewPlaylist() {
-    //qDebug() << "slotGetNewPlaylist() succesfully triggered !";
+    //qDebug() << "slotGetNewPlaylist() successfully triggered !";
 
     // create a new playlist for today
     QString set_log_name_format;
@@ -208,9 +214,10 @@ void SetlogFeature::slotJoinWithPrevious() {
                         QModelIndex index = m_pPlaylistTableModel->index(i,0);
                         if (index.isValid()) {
                             TrackPointer track = m_pPlaylistTableModel->getTrack(index);
-                            // Do not update the playcount, just set played
-                            // status.
-                            track->setPlayed(true);
+                            // Do not update the play count, just set played status.
+                            PlayCounter playCounter(track->getPlayCounter());
+                            playCounter.setPlayed();
+                            track->setPlayCounter(playCounter);
                         }
                     }
 
@@ -256,7 +263,7 @@ void SetlogFeature::slotPlayingTrackChanged(TrackPointer currentPlayingTrack) {
 
     // If the track is not present in the recent tracks list, mark it
     // played and update its playcount.
-    currentPlayingTrack->setPlayedAndUpdatePlaycount(true);
+    currentPlayingTrack->updatePlayCounter();
 
     // We can only add tracks that are Mixxx library tracks, not external
     // sources.
@@ -266,7 +273,19 @@ void SetlogFeature::slotPlayingTrackChanged(TrackPointer currentPlayingTrack) {
 
     if (m_pPlaylistTableModel->getPlaylist() == m_playlistId) {
         // View needs a refresh
-        m_pPlaylistTableModel->appendTrack(currentPlayingTrackId);
+
+        WTrackTableView* view = dynamic_cast<WTrackTableView*>(m_libraryWidget->getActiveView());
+        if (view != nullptr) {
+            // We have a active view on the history. The user may have some
+            // important active selection. For example putting track into crates
+            // while the song changes trough autodj. The selection is then lost
+            // and dataloss occurs
+            const QList<TrackId> trackIds = view->getSelectedTrackIds();
+            m_pPlaylistTableModel->appendTrack(currentPlayingTrackId);
+            view->setSelectedTracks(trackIds);
+        } else {
+            m_pPlaylistTableModel->appendTrack(currentPlayingTrackId);
+        }
     } else {
         // TODO(XXX): Care whether the append succeeded.
         m_playlistDao.appendTrackToPlaylist(currentPlayingTrackId,

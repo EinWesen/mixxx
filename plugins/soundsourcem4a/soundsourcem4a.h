@@ -3,7 +3,7 @@
 
 #include "sources/soundsourceplugin.h"
 
-#include "singularsamplebuffer.h"
+#include "util/readaheadsamplebuffer.h"
 
 #ifdef __MP4V2__
 #include <mp4v2/mp4v2.h>
@@ -15,22 +15,27 @@
 
 #include <vector>
 
-namespace Mixxx {
+namespace mixxx {
 
 class SoundSourceM4A: public SoundSourcePlugin {
-public:
+  public:
     explicit SoundSourceM4A(const QUrl& url);
-    ~SoundSourceM4A();
+    ~SoundSourceM4A() override;
 
     void close() override;
 
-    SINT seekSampleFrame(SINT frameIndex) override;
+  protected:
+    ReadableSampleFrames readSampleFramesClamped(
+            WritableSampleFrames sampleFrames) override;
 
-    SINT readSampleFrames(SINT numberOfFrames,
-            CSAMPLE* sampleBuffer) override;
+  private:
+    OpenResult tryOpen(
+            OpenMode mode,
+            const OpenParams& params) override;
 
-private:
-    Result tryOpen(const AudioSourceConfig& audioSrcCfg) override;
+    bool openDecoder();
+    void closeDecoder();
+    bool reopenDecoder();
 
     bool isValidSampleBlockId(MP4SampleId sampleBlockId) const;
 
@@ -39,18 +44,20 @@ private:
     MP4FileHandle m_hFile;
     MP4TrackId m_trackId;
     MP4Duration m_framesPerSampleBlock;
-    SINT m_numberOfPrefetchSampleBlocks;
     MP4SampleId m_maxSampleBlockId;
-    MP4SampleId m_curSampleBlockId;
 
     typedef std::vector<u_int8_t> InputBuffer;
     InputBuffer m_inputBuffer;
     SINT m_inputBufferLength;
     SINT m_inputBufferOffset;
 
-    NeAACDecHandle m_hDecoder;
+    OpenParams m_openParams;
 
-    SingularSampleBuffer m_sampleBuffer;
+    NeAACDecHandle m_hDecoder;
+    SINT m_numberOfPrefetchSampleBlocks;
+    MP4SampleId m_curSampleBlockId;
+
+    ReadAheadSampleBuffer m_sampleBuffer;
 
     SINT m_curFrameIndex;
 };
@@ -64,12 +71,12 @@ public:
     SoundSourcePointer newSoundSource(const QUrl& url) override;
 };
 
-} // namespace Mixxx
+} // namespace mixxx
 
 extern "C" MIXXX_SOUNDSOURCEPLUGINAPI_EXPORT
-Mixxx::SoundSourceProvider* Mixxx_SoundSourcePluginAPI_createSoundSourceProvider();
+mixxx::SoundSourceProvider* Mixxx_SoundSourcePluginAPI_createSoundSourceProvider();
 
 extern "C" MIXXX_SOUNDSOURCEPLUGINAPI_EXPORT
-void Mixxx_SoundSourcePluginAPI_destroySoundSourceProvider(Mixxx::SoundSourceProvider*);
+void Mixxx_SoundSourcePluginAPI_destroySoundSourceProvider(mixxx::SoundSourceProvider*);
 
 #endif // MIXXX_SOUNDSOURCEM4A_H

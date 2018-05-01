@@ -5,11 +5,12 @@
 #include <QList>
 #include <QHash>
 
-#include "configobject.h"
-#include "util.h"
+#include "preferences/usersettings.h"
 #include "effects/effectchain.h"
 #include "effects/effectrack.h"
 #include "engine/channelhandle.h"
+#include "util/class.h"
+#include "util/xml.h"
 
 class EffectsManager;
 
@@ -19,13 +20,18 @@ class EffectsManager;
 class EffectChainManager : public QObject {
     Q_OBJECT
   public:
-    EffectChainManager(ConfigObject<ConfigValue>* pConfig,
+    EffectChainManager(UserSettingsPointer pConfig,
                        EffectsManager* pEffectsManager);
     virtual ~EffectChainManager();
 
-    void registerChannel(const ChannelHandleAndGroup& handle_group);
-    const QSet<ChannelHandleAndGroup>& registeredChannels() const {
-        return m_registeredChannels;
+    void registerInputChannel(const ChannelHandleAndGroup& handle_group);
+    const QSet<ChannelHandleAndGroup>& registeredInputChannels() const {
+        return m_registeredInputChannels;
+    }
+
+    void registerOutputChannel(const ChannelHandleAndGroup& handle_group);
+    const QSet<ChannelHandleAndGroup>& registeredOutputChannels() const {
+        return m_registeredOutputChannels;
     }
 
     StandardEffectRackPointer addStandardEffectRack();
@@ -36,6 +42,9 @@ class EffectChainManager : public QObject {
 
     QuickEffectRackPointer addQuickEffectRack();
     QuickEffectRackPointer getQuickEffectRack(int rack);
+
+    OutputEffectRackPointer addOutputsEffectRack();
+    OutputEffectRackPointer getMasterEffectRack();
 
     EffectRackPointer getEffectRack(const QString& group);
 
@@ -50,21 +59,27 @@ class EffectChainManager : public QObject {
     EffectChainPointer getPrevEffectChain(EffectChainPointer pEffectChain);
 
     bool saveEffectChains();
-    bool loadEffectChains();
+    void loadEffectChains();
+
+    static const int kNumStandardEffectChains = 4;
+
+    bool isAdoptMetaknobValueEnabled() const;
 
   private:
     QString debugString() const {
         return "EffectChainManager";
     }
 
-    ConfigObject<ConfigValue>* m_pConfig;
+    UserSettingsPointer m_pConfig;
     EffectsManager* m_pEffectsManager;
     QList<StandardEffectRackPointer> m_standardEffectRacks;
     QList<EqualizerRackPointer> m_equalizerEffectRacks;
     QList<QuickEffectRackPointer> m_quickEffectRacks;
+    OutputEffectRackPointer m_pOutputEffectRack;
     QHash<QString, EffectRackPointer> m_effectRacksByGroup;
     QList<EffectChainPointer> m_effectChains;
-    QSet<ChannelHandleAndGroup> m_registeredChannels;
+    QSet<ChannelHandleAndGroup> m_registeredInputChannels;
+    QSet<ChannelHandleAndGroup> m_registeredOutputChannels;
     DISALLOW_COPY_AND_ASSIGN(EffectChainManager);
 };
 
